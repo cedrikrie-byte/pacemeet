@@ -41,7 +41,7 @@ export function Onboarding() {
   }
   async function checkCode(e: React.FormEvent) {
     e.preventDefault();
-    if (!/^\d{6}$/.test(code)) { setErr("Der Code hat 6 Ziffern."); return; }
+    if (!/^\d{6,8}$/.test(code)) { setErr("Bitte gib den Code aus der E-Mail ein."); return; }
     setBusy(true); setErr("");
     try { await api.verifyCode(email.trim(), code); }
     catch (x) { setErr((x as Error).message); setBusy(false); }
@@ -55,16 +55,16 @@ export function Onboarding() {
         {phase === "email" ? (
           <form onSubmit={requestCode} noValidate className="mt-4 flex flex-1 flex-col gap-5">
             <h1 className="font-display text-[28px] font-black leading-tight">Deine E-Mail-Adresse</h1>
-            <p className="-mt-3 text-[14.5px] text-muted">Wir schicken dir einen 6-stelligen Code. Ein Passwort brauchst du nicht.</p>
+            <p className="-mt-3 text-[14.5px] text-muted">Wir schicken dir eine E-Mail mit einem Code oder Anmeldelink. Ein Passwort brauchst du nicht.</p>
             <Field label="E-Mail" htmlFor="email" error={err}><input id="email" type="email" inputMode="email" autoComplete="email" autoFocus className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@beispiel.de" /></Field>
             <div className="mt-auto"><Button type="submit" size="lg" block disabled={busy}>{busy ? <Loader2 size={18} className="animate-spin" /> : null} Code senden</Button></div>
           </form>
         ) : (
           <form onSubmit={checkCode} noValidate className="mt-4 flex flex-1 flex-col gap-5">
-            <h1 className="font-display text-[28px] font-black leading-tight">Code eingeben</h1>
-            <p className="-mt-3 text-[14.5px] text-muted">Wir haben einen Code an <b className="text-ink">{email}</b> geschickt. Schau auch im Spam-Ordner nach.</p>
-            <Field label="6-stelliger Code" htmlFor="otp" error={err}>
-              <input id="otp" inputMode="numeric" autoComplete="one-time-code" autoFocus maxLength={6} className={cx(inputCls, "text-center font-cond text-[26px] tracking-[0.4em] tnum")} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} />
+            <h1 className="font-display text-[28px] font-black leading-tight">E-Mail prüfen</h1>
+            <p className="-mt-3 text-[14.5px] text-muted">Wir haben eine E-Mail an <b className="text-ink">{email}</b> geschickt. Tippe auf den Link darin oder gib den Code ein. Schau auch im Spam-Ordner nach.</p>
+            <Field label="Code aus der E-Mail" htmlFor="otp" error={err}>
+              <input id="otp" inputMode="numeric" autoComplete="one-time-code" autoFocus maxLength={8} className={cx(inputCls, "text-center font-cond text-[26px] tracking-[0.3em] tnum")} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 8))} />
             </Field>
             <button type="button" onClick={() => requestCode()} disabled={busy} className="self-start text-[13.5px] font-semibold text-accent">Neuen Code senden</button>
             <div className="mt-auto"><Button type="submit" size="lg" block disabled={busy}>{busy ? <Loader2 size={18} className="animate-spin" /> : null} Anmelden</Button></div>

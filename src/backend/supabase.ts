@@ -80,7 +80,8 @@ const toEvent = (e: EventRow): AppEvent => ({ id: e.id, name: e.name, start: e.s
 // --- Anmeldung -----------------------------------------------------------------
 
 export async function sendCode(email: string) {
-  const { error } = await sb().auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+  // Funktioniert mit Code-Vorlage ({{ .Token }}) und mit der Standard-Vorlage (Anmeldelink zurück in die App)
+  const { error } = await sb().auth.signInWithOtp({ email, options: { shouldCreateUser: true, emailRedirectTo: window.location.origin } });
   fail(error);
 }
 export async function verifyCode(email: string, token: string) {
