@@ -19,11 +19,16 @@ import { APP } from "./config/app";
 import { setLocale } from "./lib/format";
 import { LIVE } from "./config/backend";
 import { LegalScreen } from "./screens/Legal";
+import { PublicActivityScreen } from "./screens/PublicActivity";
+
+/** Geteilter Link: …/#a-<id> */
+const readShare = () => /^#a-([0-9a-zA-Z-]{6,})$/.exec(window.location.hash)?.[1] ?? null;
+const clearHash = () => { try { history.replaceState(null, "", window.location.pathname + window.location.search); } catch { /* ignorieren */ } };
 
 const TABS: Tab[] = ["discover", "mine", "league", "profile"];
 
 function Shell() {
-  const { state, toasts } = useApp();
+  const { state, toasts, api } = useApp();
   const [stack, setStack] = useState<Screen[]>([{ name: "discover" }]);
   const scroller = useRef<HTMLDivElement>(null);
   const current = stack[stack.length - 1];
@@ -52,6 +57,26 @@ function Shell() {
   const modeCls = state.settings.theme === "system" ? (hostTheme ? (dark ? "mode-dark" : "mode-light") : "") : dark ? "mode-dark" : "mode-light";
 
   const ready = LIVE ? state.auth === "ready" && !!state.users[state.meId] : state.onboarded;
+
+  // Geteilte Aktivität öffnen (beim Start, bei Push-Klick oder Linkwechsel)
+  const [shareId, setShareId] = useState<string | null>(readShare);
+  const [wantsLogin, setWantsLogin] = useState(false);
+  useEffect(() => {
+    const h = () => setShareId(readShare());
+    window.addEventListener("hashchange", h);
+    return () => window.removeEventListener("hashchange", h);
+  }, []);
+  useEffect(() => {
+    if (!ready || !shareId) return;
+    let on = true;
+    void api.ensureActivity(shareId).then((found) => {
+      if (!on) return;
+      if (found) nav.push({ name: "activity", id: shareId });
+      else api.toast("Diese Aktivität gibt es nicht mehr.", "warn");
+      setShareId(null); setWantsLogin(false); clearHash();
+    });
+    return () => { on = false; };
+  }, [ready, shareId]); // eslint-disable-line react-hooks/exhaustive-deps
   const isTab = TABS.includes(current.name as Tab);
   const activeTab = isTab ? (current.name as Tab) : null;
   const unconfirmed = state.activities.filter((a) => a.status === "open" && (a.participants.includes(state.meId)) && !a.selfConfirmed.includes(state.meId) && new Date(a.startsAt).getTime() < Date.now() - 3 * 3600e3).length;
@@ -87,7 +112,12 @@ function Shell() {
         <div className="relative flex h-full w-full max-w-[440px] flex-col overflow-hidden bg-bg lg:rounded-[32px] lg:border lg:border-line lg:shadow-[0_30px_80px_-40px_rgb(0_0_0/.45)]">
           <NavCtx.Provider value={nav}>
             <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
-              {LIVE && state.auth === "loading" ? <Splash /> : !ready ? (current.name === "legal" ? screen : <Onboarding />) : screen}
+              {LIVE && state.auth === "loading" ? <Splash />
+                : !ready ? (current.name === "legal" ? screen
+                  : LIVE && shareId && !wantsLogin && state.auth === "signedOut"
+                    ? <PublicActivityScreen id={shareId} onJoin={() => setWantsLogin(true)} onDismiss={() => { setShareId(null); clearHash(); }} />
+                    : <Onboarding />)
+                : screen}
             </div>
             {ready && isTab && (
               <nav aria-label="Hauptnavigation" className="relative z-30 grid grid-cols-5 border-t border-line bg-surface/95 px-1 pb-[max(6px,env(safe-area-inset-bottom))] pt-1.5 backdrop-blur-md">

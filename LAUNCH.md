@@ -28,7 +28,11 @@ Profilfotos, Liga, Konto löschen und Datenexport. Die App ist auf dem Handy ins
 1. Im Supabase-Projekt links **SQL Editor** öffnen → **New query**.
 2. Den kompletten Inhalt von `supabase/migrations/20261024000000_init.sql` einfügen → **Run**. Es muss „Success“ erscheinen.
 3. Neue Abfrage, Inhalt von `supabase/migrations/20261024000100_storage.sql` einfügen → **Run**.
-4. Optional: `supabase/seed_events.sql` für ein erstes Community-Event (Daten vorher anpassen).
+4. Ebenso `20261024000200_features.sql` und `20261024000300_schedules.sql` (Teilen, Serien, Erinnerungen, Push).
+   In `..._schedules.sql` stehen Projekt-URL und anon-Schlüssel des Projekts; bei einem neuen Projekt anpassen.
+5. Edge Function `supabase/functions/send-push/index.ts` anlegen: Edge Functions → Deploy a new function → Via Editor,
+   Name `send-push`, Code einfügen, Deploy. Die Push-Schlüssel erzeugt sie beim ersten Aufruf selbst.
+6. Optional: `supabase/seed_events.sql` für ein erstes Community-Event (Daten vorher anpassen).
 
 > Die Datenbankregeln sind mit 49 automatischen Tests geprüft (`npm run test:db`).
 
@@ -106,7 +110,6 @@ Unter **Authentication**:
 
 ## 11. Was noch fehlt (nächste Ausbaustufen)
 
-- **Push-Nachrichten** aufs Handy, auch wenn die App geschlossen ist (Web Push oder native App)
 - **App-Store-Versionen** für iOS und Android (die Web-App lässt sich mit Capacitor verpacken)
 - **Eigene Kartenserver** oder ein Kartenanbieter mit Vertrag, sobald viele Nutzer aktiv sind
 - **Moderationsoberfläche** statt Supabase-Tabellen

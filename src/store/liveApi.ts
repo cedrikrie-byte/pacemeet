@@ -87,6 +87,18 @@ export function makeLiveApi(dispatch: React.Dispatch<Action>, get: () => AppStat
     join(id: string) { void run(() => be.joinActivity(id), "Du bist dabei! Der Gruppenchat ist jetzt offen."); },
     leave(id: string) { void run(() => be.leaveActivity(id), "Teilnahme abgesagt. Die Gruppe wurde informiert.", undefined); },
     async create(a: Activity) { return run(() => be.createActivity(a), "Aktivität veröffentlicht"); },
+    async createSeries(list: Activity[]) { return run(() => be.createActivities(list), `${list.length} Termine veröffentlicht`); },
+    cancelSeries(seriesId: string) { void run(() => be.cancelSeries(seriesId), "Alle kommenden Termine der Serie wurden abgesagt.", "warn"); },
+    async ensureActivity(id: string) {
+      if (get().activities.some((a) => a.id === id)) return true;
+      try {
+        const extra = await be.loadActivity(id);
+        if (!extra) return false;
+        set((s) => ({ ...s, activities: [...s.activities.filter((a) => a.id !== id), extra.activity], users: { ...extra.users, ...s.users } }));
+        return true;
+      } catch { return false; }
+    },
+    toast,
     async update(id: string, patch: Partial<Activity>, summary: string) {
       const r = await run(() => be.updateActivity(id, patch).then(() => true), summary ? "Gespeichert. Alle Teilnehmenden wurden benachrichtigt." : "Gespeichert");
       return !!r;

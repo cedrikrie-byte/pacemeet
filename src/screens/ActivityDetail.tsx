@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { CalendarDays, Check, Coffee, ExternalLink, Flag, Lock, MapPin, MessageCircle, Pencil, Route as RouteIcon, ShieldCheck, Sprout, TriangleAlert, Users } from "lucide-react";
+import { CalendarDays, Check, Coffee, Copy, ExternalLink, Flag, Lock, MapPin, MessageCircle, Pencil, Repeat, Route as RouteIcon, Share2, ShieldCheck, Sprout, TriangleAlert, Users } from "lucide-react";
 import { useApp } from "../store/AppStore";
 import { useNav } from "../nav";
-import { Avatar, Button, Empty, Sheet, SportTag, TopBar, cx } from "../components/ui";
+import { Avatar, Button, Empty, IconButton, Sheet, SportTag, TopBar, cx } from "../components/ui";
 import { MapView } from "../components/MapView";
 import { durationMin, fmtDateLong, fmtDistance, fmtDuration, fmtTempo, fmtTime, tempoLabel } from "../lib/format";
 import { cityName, isHost, isJoined, needsMyConfirmation, spotsLeft, totalPeople } from "../lib/activity";
@@ -15,6 +15,8 @@ export function ActivityDetail({ id }: { id: string }) {
   const a = state.activities.find((x) => x.id === id);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [confirmSeries, setConfirmSeries] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [present, setPresent] = useState<string[] | null>(null);
   if (!a) return <div><TopBar onBack={nav.back} title="Aktivität" /><div className="p-4"><Empty icon={<CalendarDays />} title="Nicht gefunden" text="Diese Aktivität gibt es nicht mehr." /></div></div>;
 
@@ -32,11 +34,27 @@ export function ActivityDetail({ id }: { id: string }) {
   const planned = a.route?.mode === "planned" && a.route.points.length > 1;
   const people = [a.hostId, ...a.participants].filter((p) => !state.blocked.includes(p));
   const osm = `https://www.openstreetmap.org/?mlat=${a.lat}&mlon=${a.lng}#map=16/${a.lat}/${a.lng}`;
+  const shareUrl = `${window.location.origin}${window.location.pathname}#a-${a.id}`;
+  const shareText = `${a.title}: ${fmtDateLong(a.startsAt)}, ${fmtTime(a.startsAt)} Uhr, ${a.meetingPoint}. Kommst du mit?`;
+  async function share() {
+    if (navigator.share) {
+      try { await navigator.share({ title: a!.title, text: shareText, url: shareUrl }); return; }
+      catch (e) { if ((e as Error).name === "AbortError") return; }
+    }
+    setShareOpen(true);
+  }
+  async function copyLink() {
+    try { await navigator.clipboard.writeText(`${shareText} ${shareUrl}`); api.toast("Link kopiert", "good"); setShareOpen(false); }
+    catch { (document.getElementById("share-link") as HTMLInputElement | null)?.select(); }
+  }
 
   return (
     <div className="screen-in pb-28">
       <TopBar onBack={nav.back} title={a.title} sub={cityName(a.city)}
-        right={mine && !cancelled && !ended ? <Button size="sm" variant="secondary" onClick={() => nav.push({ name: "create", editId: a.id })}><Pencil size={14} /> Bearbeiten</Button> : undefined} />
+        right={<div className="flex items-center gap-1">
+          {!cancelled && !ended && <IconButton label="Teilen" onClick={share}><Share2 size={19} /></IconButton>}
+          {mine && !cancelled && !ended && <Button size="sm" variant="secondary" onClick={() => nav.push({ name: "create", editId: a.id })}><Pencil size={14} /> Bearbeiten</Button>}
+        </div>} />
 
       <div className="flex flex-col gap-6 px-4 pt-4">
         {cancelled && (
@@ -47,6 +65,7 @@ export function ActivityDetail({ id }: { id: string }) {
           <div className="flex flex-wrap items-center gap-2">
             <SportTag sport={a.sport} />
             {ev && <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[12px] font-bold text-accent">{ev.name}</span>}
+            {a.seriesId && <span className="inline-flex items-center gap-1 rounded-full bg-raised px-2 py-0.5 text-[12px] font-bold"><Repeat size={12} /> Jede Woche</span>}
           </div>
           <h1 className="mt-2 font-display text-[28px] font-black leading-[1.05]">{a.title}</h1>
           <p className="mt-2 flex items-center gap-1.5 text-[15px] font-semibold"><CalendarDays size={16} className="text-muted" /> {fmtDateLong(a.startsAt)}, {fmtTime(a.startsAt)} Uhr</p>
@@ -150,6 +169,7 @@ export function ActivityDetail({ id }: { id: string }) {
           )}
           {!mine && <button onClick={() => nav.push({ name: "user", id: a.hostId })} className="mt-2 inline-flex items-center gap-1.5 self-start text-[13px] font-semibold text-muted hover:text-ink"><Flag size={14} /> Problem mit dieser Aktivität melden</button>}
           {mine && !cancelled && !started && <button onClick={() => setConfirmCancel(true)} className="mt-2 self-start text-[13px] font-semibold text-bad">Aktivität absagen</button>}
+          {mine && !cancelled && !started && a.seriesId && <button onClick={() => setConfirmSeries(true)} className="self-start text-[13px] font-semibold text-bad">Alle kommenden Termine der Serie absagen</button>}
         </section>
       </div>
 
@@ -173,6 +193,18 @@ export function ActivityDetail({ id }: { id: string }) {
         footer={<div className="flex gap-2"><Button variant="secondary" block onClick={() => setConfirmLeave(false)}>Doch dabei</Button><Button variant="danger" block onClick={() => { api.leave(a.id, late); setConfirmLeave(false); }}>Absagen</Button></div>}>
         <p className="text-[15px] leading-relaxed">Die Gruppe wird automatisch informiert, und dein Platz wird wieder frei.</p>
         {late && <p className={cx("mt-3 flex gap-2 rounded-xl bg-warn/12 p-3 text-[13.5px] text-warn")}><TriangleAlert size={17} className="shrink-0" /> Der Start ist in weniger als 2 Stunden. Kurzfristige Absagen werden in deinem Profil gezählt.</p>}
+      </Sheet>
+      <Sheet open={confirmSeries} onClose={() => setConfirmSeries(false)} title="Ganze Serie absagen?"
+        footer={<div className="flex gap-2"><Button variant="secondary" block onClick={() => setConfirmSeries(false)}>Zurück</Button><Button variant="danger" block onClick={() => { api.cancelSeries(a.seriesId!); setConfirmSeries(false); }}>Alle absagen</Button></div>}>
+        <p className="text-[15px] leading-relaxed">Alle kommenden Termine dieser wöchentlichen Serie werden abgesagt und alle Angemeldeten benachrichtigt. Vergangene Termine bleiben erhalten.</p>
+      </Sheet>
+      <Sheet open={shareOpen} onClose={() => setShareOpen(false)} title="Aktivität teilen">
+        <div className="flex flex-col gap-3 pb-3">
+          <p className="text-[14px] text-muted">Schick den Link in deine Laufgruppe oder an Freunde. Ohne Konto sehen sie eine Vorschau; zum Mitmachen melden sie sich kurz an.</p>
+          <label htmlFor="share-link" className="sr-only">Link</label>
+          <input id="share-link" readOnly value={shareUrl} onFocus={(e) => e.currentTarget.select()} className="h-12 w-full rounded-xl border border-line bg-raised px-3.5 text-[14px]" />
+          <Button onClick={copyLink}><Copy size={16} /> Link kopieren</Button>
+        </div>
       </Sheet>
       <Sheet open={confirmCancel} onClose={() => setConfirmCancel(false)} title="Aktivität absagen?"
         footer={<div className="flex gap-2"><Button variant="secondary" block onClick={() => setConfirmCancel(false)}>Zurück</Button><Button variant="danger" block onClick={() => { api.cancelActivity(a.id); setConfirmCancel(false); }}>Für alle absagen</Button></div>}>

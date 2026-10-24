@@ -24,7 +24,8 @@ create table storage.objects (id uuid default gen_random_uuid(), bucket_id text,
 create function storage.foldername(name text) returns text[] language sql as $$ select string_to_array(name, '/') $$;
 alter table storage.objects enable row level security;
 `);
-for (const f of fs.readdirSync(MIG).sort()) { await db.exec(fs.readFileSync(`${MIG}/${f}`, "utf8")); console.log("Migration geladen:", f); }
+for (const f of fs.readdirSync(MIG).sort().filter((f) => !f.includes("schedules"))) { // Zeitpläne brauchen pg_cron/pg_net (nur Supabase)
+  await db.exec(fs.readFileSync(`${MIG}/${f}`, "utf8")); console.log("Migration geladen:", f); }
 
 const U = { A: "00000000-0000-0000-0000-00000000000a", B: "00000000-0000-0000-0000-00000000000b", C: "00000000-0000-0000-0000-00000000000c", D: "00000000-0000-0000-0000-00000000000d", E: "00000000-0000-0000-0000-00000000000e" };
 for (const [k, id] of Object.entries(U)) await db.query("insert into auth.users (id, email) values ($1, $2)", [id, k + "@test.de"]);
@@ -156,6 +157,48 @@ ok((await as(U.A, "select * from reports")).rows.length === 0, "Gemeldete sehen 
 
 // Anonym
 ok((await fails(null, "select * from activities")) !== null || (await as(null, "select * from activities")).rows.length === 0, "Ohne Anmeldung keine Aktivitäten");
+
+// --- Neue Funktionen: Teilen, Serien, Erinnerungen, Push ---
+await db.exec("reset role");
+const pub = (await db.query(`insert into activities (host_id, title, sport, city, meeting_point, lat, lng, starts_at, distance_km, tempo, max_participants)
+  values ($1, 'Geteilt', 'run', 'essen', 'Grugapark', 51.43, 7.0, now() + interval '90 minutes', 5, 400, 6) returning id`, [U.A])).rows[0].id;
+const prev = (await as(null, "select * from public_activity($1)", [pub])).rows;
+ok(prev.length === 1 && prev[0].host_name === "Nutzer A" && !("host_id" in prev[0]), "Öffentliche Vorschau ohne Konto: Titel und Vorname, keine Nutzer-ID");
+ok((await as(null, "select * from public_activity($1)", [past])).rows.length === 0, "Vergangene Aktivitäten haben keine öffentliche Vorschau");
+
+const series = "11111111-2222-3333-4444-555555555555";
+for (let i = 0; i < 3; i++) {
+  await as(U.E, `insert into activities (title, sport, city, meeting_point, lat, lng, starts_at, distance_km, tempo, max_participants, series_id)
+    values ('Wöchentlich', 'run', 'essen', 'Grugapark', 51.43, 7.0, now() + interval '${i * 7 + 1} days', 5, 400, 10, $1)`, [series]);
+}
+ok((await fails(U.A, "select cancel_series($1)", [series])) === null && (await as(U.E, "select count(*)::int c from activities where series_id=$1 and status='open'", [series])).rows[0].c === 3, "Fremde können eine Serie nicht absagen");
+ok((await as(U.E, "select cancel_series($1) as n", [series])).rows[0].n === 3, "Gastgeber sagt alle 3 kommenden Termine der Serie ab");
+
+// Erinnerungen: C tritt der in 90 Minuten startenden Aktivität bei
+await as(U.C, "select join_activity($1)", [pub]);
+await db.exec("reset role");
+const r1 = (await db.query("select send_reminders() as n")).rows[0].n;
+const r2 = (await db.query("select send_reminders() as n")).rows[0].n;
+ok(r2 === 0, `Erinnerungen werden nicht doppelt verschickt (1. Lauf: ${r1}, 2. Lauf: ${r2})`);
+ok((await as(U.C, "select body from notifications where kind='reminder' and activity_id=$1", [pub])).rows.some((r) => r.body.includes("Gleich geht")), "Start-Erinnerung an Teilnehmende");
+ok((await as(U.A, "select body from notifications where kind='reminder' and activity_id=$1", [pub])).rows.length === 1, "Start-Erinnerung an Gastgeber");
+// Bestätigungs-Erinnerung für eine gerade beendete Aktivität
+await db.exec("reset role");
+const done = (await db.query(`insert into activities (host_id, title, sport, city, meeting_point, lat, lng, starts_at, distance_km, tempo, max_participants, participant_count)
+  values ($1, 'Eben vorbei', 'run', 'essen', 'Grugapark', 51.43, 7.0, now() - interval '2 hours', 5, 400, 6, 1) returning id`, [U.A])).rows[0].id;
+await db.query("insert into activity_participants (activity_id, user_id) values ($1, $2)", [done, U.C]);
+await db.query("select send_reminders()");
+ok((await as(U.C, "select body from notifications where activity_id=$1", [done])).rows.some((r) => r.body.includes("Warst du")), "Nach dem Ende: Teilnehmende werden um Bestätigung gebeten");
+ok((await as(U.A, "select body from notifications where activity_id=$1", [done])).rows.some((r) => r.body.includes("Wer war")), "Nach dem Ende: Gastgeber wird gebeten abzuhaken");
+ok((await fails(U.C, "select send_reminders()")) !== null, "Erinnerungen kann nur der Server auslösen");
+
+// Push-Abos
+await as(U.C, "insert into push_subscriptions (endpoint, p256dh, auth) values ('https://push.example/c1', 'k', 'a')");
+ok((await as(U.C, "select user_id from push_subscriptions")).rows[0]?.user_id === U.C, "Push-Abo wird dem eigenen Konto zugeordnet");
+ok((await as(U.D, "select * from push_subscriptions")).rows.length === 0, "Fremde Push-Abos sind unsichtbar");
+ok((await fails(U.D, "insert into push_subscriptions (user_id, endpoint, p256dh, auth) values ($1, 'https://push.example/x', 'k', 'a')", [U.C])) !== null, "Push-Abo für fremdes Konto wird verweigert");
+ok((await fails(U.C, "select * from app_secrets")) !== null || (await as(U.C, "select * from app_secrets")).rows.length === 0, "Geheime Server-Einstellungen sind gesperrt");
+ok((await fails(U.C, "update notifications set pushed_at = now()")) !== null, "Versandstatus von Benachrichtigungen ist nicht änderbar");
 
 // Konto löschen
 await as(U.B, "select delete_my_account()");

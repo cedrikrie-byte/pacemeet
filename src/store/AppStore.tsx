@@ -137,6 +137,21 @@ function makeDemoApi(dispatch: React.Dispatch<Action>, get: () => AppState, toas
     async exportData(): Promise<unknown> { const s = get(); return { hinweis: "Demo-Daten", profil: s.users[s.meId], aktivitaeten: s.activities.filter((a) => a.hostId === s.meId || a.participants.includes(s.meId)) }; },
     async loadLeague() {},
     async loadUser(_id: string) {},
+    /** Mehrere Termine einer Serie anlegen; gibt die ID des ersten Termins zurück. */
+    async createSeries(list: Activity[]): Promise<string | null> {
+      set((s) => ({ ...s, activities: [...list, ...s.activities] }));
+      toast(`${list.length} Termine veröffentlicht`, "good");
+      return list[0]?.id ?? null;
+    },
+    cancelSeries(seriesId: string) {
+      const t = Date.now();
+      set((s) => ({ ...s, activities: s.activities.map((a) => a.seriesId === seriesId && a.hostId === s.meId && a.status === "open" && new Date(a.startsAt).getTime() > t
+        ? { ...a, status: "cancelled" as const, messages: [...a.messages, sysMsg("Die Aktivität wurde abgesagt")] } : a) }));
+      toast("Alle kommenden Termine der Serie wurden abgesagt.", "warn");
+    },
+    /** Stellt sicher, dass eine (z. B. geteilte) Aktivität geladen ist. */
+    async ensureActivity(id: string): Promise<boolean> { return get().activities.some((a) => a.id === id); },
+    toast,
   };
 }
 export type Api = ReturnType<typeof makeDemoApi>;

@@ -1,4 +1,4 @@
-import { Clock, Coffee, MapPin, Route as RouteIcon, Sprout, Users } from "lucide-react";
+import { Clock, Coffee, MapPin, Repeat, Route as RouteIcon, Sprout, Users } from "lucide-react";
 import type { Activity } from "../types";
 import { useApp } from "../store/AppStore";
 import { useNav } from "../nav";
@@ -46,8 +46,9 @@ export function ActivityCard({ a, compact }: { a: Activity; compact?: boolean })
         <Stat value={fmtDuration(durationMin(a.sport, a.distanceKm, a.tempo))} label="ca. Dauer" />
       </div>
 
-      {!compact && (a.beginnerFriendly || a.breaks || a.route?.mode === "planned" || ev) && (
+      {!compact && (a.beginnerFriendly || a.breaks || a.route?.mode === "planned" || ev || a.seriesId) && (
         <div className="mt-3 flex flex-wrap gap-1.5">
+          {a.seriesId && <Pill icon={<Repeat size={12} />}>Jede Woche</Pill>}
           {a.beginnerFriendly && <Pill icon={<Sprout size={12} />}>Anfänger willkommen</Pill>}
           {a.breaks && <Pill icon={<Coffee size={12} />}>{a.sport === "run" ? "Gehpausen" : "Pausen"}</Pill>}
           {a.route?.mode === "planned" && <Pill icon={<RouteIcon size={12} />}>{a.route.source === "loop" ? "Rundkurs" : a.route.source === "a2b" && a.route.destination ? `nach ${a.route.destination}` : "Route geplant"}{a.route.ascentM ? ` · ${a.route.ascentM} Hm` : ""}</Pill>}

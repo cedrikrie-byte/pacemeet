@@ -97,6 +97,8 @@ export interface Activity {
   messages: Message[];
   route?: Route;
   eventId?: string;
+  /** Gemeinsame ID aller Termine einer wöchentlichen Serie */
+  seriesId?: string;
   updatedAt?: string;
 }
 

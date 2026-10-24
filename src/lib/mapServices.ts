@@ -35,7 +35,10 @@ export async function geocode(q: string, near: [number, number], signal?: AbortS
       const street = p.street ? `${p.street}${p.housenumber ? " " + p.housenumber : ""}` : "";
       const name = p.name || street || p.city || "Ort";
       const detail = [p.name ? street : "", p.postcode, p.city || p.town || p.village].filter(Boolean).join(", ");
-      return { id: `${p.osm_id ?? i}-${i}`, name, detail, lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0], isAddress: !!p.housenumber };
+      // Nur reine Hausadressen gelten als mögliche Wohnadresse. Benannte Orte (Park, Platz, Laden)
+      // haben in OpenStreetMap oft ebenfalls eine Hausnummer, sind aber öffentlich.
+      const isAddress = p.type === "house" || (!p.name && !!p.housenumber);
+      return { id: `${p.osm_id ?? i}-${i}`, name, detail, lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0], isAddress };
     })
     .slice(0, 6);
 }
@@ -68,7 +71,7 @@ export async function reverseGeocode(p: [number, number]): Promise<{ label: stri
     const pr = j.features?.[0]?.properties;
     if (!pr) return null;
     const city = pr.city || pr.town || pr.village || pr.district || "";
-    const isHouse = !!pr.housenumber;
+    const isHouse = pr.type === "house" || (!pr.name && !!pr.housenumber);
     const base = !isHouse && pr.name ? pr.name : pr.street ? `Nähe ${pr.street}` : pr.name || "";
     if (!base) return null;
     return { label: city && !base.includes(city) ? `${base}, ${city}` : base, nearAddress: isHouse };

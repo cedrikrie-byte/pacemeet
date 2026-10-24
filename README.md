@@ -20,7 +20,7 @@ Wie du live gehst, steht Schritt für Schritt in **[LAUNCH.md](LAUNCH.md)**.
 npm install
 npm run dev        # http://localhost:5173
 npm run build      # Produktions-Build (installierbare Web-App) nach dist/
-npm run test:db    # 49 Tests für Datenbankregeln (läuft lokal, ohne Supabase)
+npm run test:db    # 64 Tests für Datenbankregeln (läuft lokal, ohne Supabase)
 SINGLEFILE=1 npx vite build   # eine einzelne HTML-Datei (Demo zum Weitergeben)
 ```
 
@@ -42,8 +42,9 @@ src/
   lib/           routing.ts (Rundkurs, Start → Ziel), mapServices.ts (Suche), xp.ts (Liga), geo.ts, format.ts
   content/       legal.ts – Entwürfe für Impressum, Datenschutz, Nutzungsbedingungen
 supabase/
-  migrations/    Datenbankschema mit Zugriffsregeln, Triggern und Funktionen
-  tests/         db.test.mjs – prüft die Regeln mit einer lokalen Postgres-Instanz (PGlite)
+  migrations/    Datenbankschema (000 Basis, 100 Fotos, 200 Teilen/Serien/Erinnerungen/Push, 300 Zeitpläne – nur Supabase)
+  functions/     send-push – verschickt Push-Nachrichten (Edge Function, erzeugt ihre Schlüssel selbst)
+  tests/         db.test.mjs (lokal, PGlite) und live_smoke_test.sql (in Supabase, rollt sich selbst zurück)
   email/         deutsche E-Mail-Vorlagen für den Anmeldecode
 public/          App-Icons
 LAUNCH.md        Anleitung zum Live-Schalten
@@ -58,7 +59,10 @@ LAUNCH.md        Anleitung zum Live-Schalten
 | Route: Rundkurs mit Wunschlänge, Start → Ziel (mit Zwischenziel, Rückweg), selbst zeichnen, GPX | fertig |
 | Rad- und lauffreundliches Routing mit Höhenmetern (BRouter, Ersatz OSRM) | fertig, braucht Internet |
 | Teilnehmen, Absagen, Kapazität, Gruppenchat | fertig (Live: in Echtzeit) |
-| Benachrichtigungen | in der App; Push aufs Handy noch nicht |
+| Benachrichtigungen | in der App und als Push aufs Gerät (iPhone: nur installierte App) |
+| Automatische Erinnerungen (2 h vorher, Bestätigung danach) | fertig (pg_cron alle 10 Min.) |
+| Aktivität teilen mit öffentlicher Vorschau (`/#a-<id>`) | fertig |
+| Wöchentliche Serien, ganze Serie absagen | fertig |
 | Teilnahmebestätigung, Zuverlässigkeit, Community-Liga, Event-Medaillen | fertig (Punkte serverseitig) |
 | Profil mit Foto, Alter (optional), Bestzeiten | fertig |
 | Melden, Blockieren, Datenschutz-Einstellungen | fertig |

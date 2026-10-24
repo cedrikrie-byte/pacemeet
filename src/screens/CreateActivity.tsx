@@ -59,6 +59,8 @@ export function CreateActivity({ editId }: { editId?: string }) {
   const activeEvents = state.events.filter((e) => new Date(e.end).getTime() + 86400000 > Date.now());
 
   const [saving, setSaving] = useState(false);
+  const [repeat, setRepeat] = useState(false);
+  const [weeks, setWeeks] = useState(6);
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const err: Record<string, string> = {};
@@ -100,7 +102,18 @@ export function CreateActivity({ editId }: { editId?: string }) {
     } else {
       const a: Activity = { ...base, id: uid(), hostId: state.meId, participants: [], status: "open", selfConfirmed: [], hostConfirmed: [], messages: [] };
       setSaving(true);
-      const id = await api.create(a);
+      let id: string | null;
+      if (repeat) {
+        // Wöchentliche Serie: gleiche Uhrzeit (auch über die Zeitumstellung hinweg)
+        const seriesId = crypto.randomUUID();
+        const list: Activity[] = Array.from({ length: weeks }, (_, i) => {
+          const d = new Date(start); d.setDate(d.getDate() + 7 * i);
+          return { ...a, id: uid(), seriesId, startsAt: d.toISOString(), messages: [] };
+        });
+        id = await api.createSeries(list);
+      } else {
+        id = await api.create(a);
+      }
       setSaving(false);
       if (id) nav.replace({ name: "activity", id });
     }
@@ -178,6 +191,21 @@ export function CreateActivity({ editId }: { editId?: string }) {
         <div className="divide-y divide-line rounded-2xl border border-line bg-surface px-4">
           <Toggle id="beginner" checked={beginner} onChange={setBeginner} label="Anfänger willkommen" desc="Niemand wird zurückgelassen." />
           <Toggle id="breaks" checked={breaks} onChange={setBreaks} label={sport === "run" ? "Geh- oder Ruhepausen" : "Pausen eingeplant"} desc="Hilft beim Einstieg oder Wiedereinstieg." />
+          {!editing && (
+            <Toggle id="repeat" checked={repeat} onChange={setRepeat} label="Jede Woche wiederholen"
+              desc={repeat ? `Legt ${weeks} Termine an, jeweils ${new Date(`${date}T${time}`).toLocaleDateString("de-DE", { weekday: "long" }).toLowerCase()}s um ${time} Uhr.` : "Ideal für einen festen Lauftreff oder eine Feierabendrunde."} />
+          )}
+          {!editing && repeat && (
+            <div className="flex items-center justify-between gap-3 py-3">
+              <span className="text-[14.5px] font-medium">Anzahl Wochen</span>
+              <span className="flex gap-1.5">
+                {[4, 6, 8, 12].map((w) => (
+                  <button type="button" key={w} onClick={() => setWeeks(w)} aria-pressed={weeks === w}
+                    className={cx("h-9 min-w-[44px] rounded-full border px-3 text-[13px] font-semibold tnum", weeks === w ? "border-ink bg-ink text-bg" : "border-line")}>{w}</button>
+                ))}
+              </span>
+            </div>
+          )}
         </div>
 
         {activeEvents.length > 0 && (
@@ -191,7 +219,7 @@ export function CreateActivity({ editId }: { editId?: string }) {
       </div>
 
       <div className="absolute inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3 backdrop-blur-md">
-        <Button type="submit" block size="lg" disabled={saving}>{saving ? "Wird gespeichert …" : editing ? "Änderungen speichern" : "Aktivität veröffentlichen"}</Button>
+        <Button type="submit" block size="lg" disabled={saving}>{saving ? "Wird gespeichert …" : editing ? "Änderungen speichern" : repeat ? `${weeks} Termine veröffentlichen` : "Aktivität veröffentlichen"}</Button>
       </div>
     </form>
   );

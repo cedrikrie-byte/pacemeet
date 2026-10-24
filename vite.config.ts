@@ -37,6 +37,8 @@ export default defineConfig({
             maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
             navigateFallback: "index.html",
             navigateFallbackDenylist: [/^\/auth/],
+            // Push-Nachrichten anzeigen (siehe public/push-sw.js)
+            importScripts: ["push-sw.js"],
           },
         }),
       ],

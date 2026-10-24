@@ -27,7 +27,7 @@ interface ActivityRow {
   id: string; host_id: string; title: string; sport: SportId; city: string; meeting_point: string; lat: number; lng: number;
   starts_at: string; distance_km: number; tempo: number; max_participants: number; description: string;
   beginner_friendly: boolean; breaks: boolean; route: Activity["route"] | null; event_id: string | null;
-  status: "open" | "cancelled"; participant_count: number; updated_at: string;
+  status: "open" | "cancelled"; participant_count: number; updated_at: string; series_id: string | null;
 }
 interface PartRow { activity_id: string; user_id: string; self_confirmed: boolean; host_confirmed: boolean; }
 interface MsgRow { id: string; activity_id: string; user_id: string | null; body: string; is_system: boolean; created_at: string; }
@@ -73,6 +73,7 @@ function toActivity(r: ActivityRow, parts: PartRow[], msgs: MsgRow[]): Activity 
     hostConfirmed: mine.filter((p) => p.host_confirmed).map((p) => p.user_id),
     messages: msgs.filter((m) => m.activity_id === r.id).map((m): Message => ({ id: m.id, userId: m.user_id ?? "system", text: m.body, at: m.created_at, system: m.is_system })),
     route: r.route ?? { mode: "spontaneous", points: [] }, eventId: r.event_id ?? undefined, updatedAt: r.updated_at,
+    seriesId: r.series_id ?? undefined,
   };
 }
 const toEvent = (e: EventRow): AppEvent => ({ id: e.id, name: e.name, start: e.starts_on, end: e.ends_on, required: e.required, medal: e.medal, hue: e.hue, description: e.description });
@@ -171,6 +172,24 @@ export async function loadSnapshot(uid: string, cityId: string | null, radiusKm:
   };
 }
 
+/** Einzelne Aktivität nachladen (z. B. aus einem geteilten Link, außerhalb des Umkreises). */
+export async function loadActivity(id: string): Promise<{ activity: Activity; users: Record<string, User> } | null> {
+  const db = sb();
+  const { data: row, error } = await db.from("activities").select("*").eq("id", id).maybeSingle<ActivityRow>();
+  fail(error);
+  if (!row) return null;
+  const [parts, msgs] = await Promise.all([
+    db.from("activity_participants").select("activity_id,user_id,self_confirmed,host_confirmed").eq("activity_id", id),
+    db.from("messages").select("*").eq("activity_id", id).order("created_at").limit(500),
+  ]);
+  const ids = new Set<string>([row.host_id, ...((parts.data as PartRow[]) ?? []).map((p) => p.user_id)]);
+  const { data: profs } = await db.from("profiles").select("*").in("id", [...ids]);
+  const users: Record<string, User> = {};
+  ids.forEach((u) => (users[u] = placeholder(u)));
+  ((profs as ProfileRow[]) ?? []).forEach((p) => (users[p.id] = toUser(p)));
+  return { activity: toActivity(row, (parts.data as PartRow[]) ?? [], (msgs.data as MsgRow[]) ?? []), users };
+}
+
 export async function loadReliability(uid: string): Promise<User["reliability"] | null> {
   const { data } = await sb().rpc("reliability", { p_user: uid });
   const r = (data as { attended: number; hosted: number; late_cancels: number; member_since: string }[] | null)?.[0];
@@ -197,6 +216,51 @@ export async function createActivity(a: Activity): Promise<string> {
   const { data, error } = await sb().from("activities").insert(toRow(a)).select("id").single();
   fail(error);
   return (data as { id: string }).id;
+}
+/** Mehrere Termine auf einmal (Serie). Gibt die ID des ersten Termins zurück. */
+export async function createActivities(list: Activity[]): Promise<string> {
+  const rows = list.map((a) => ({ ...toRow(a), series_id: a.seriesId ?? null }));
+  const { data, error } = await sb().from("activities").insert(rows).select("id,starts_at").order("starts_at");
+  fail(error);
+  return (data as { id: string }[])[0].id;
+}
+export async function cancelSeries(seriesId: string): Promise<number> {
+  const { data, error } = await sb().rpc("cancel_series", { p_series: seriesId });
+  fail(error);
+  return data as number;
+}
+
+// --- Teilen: öffentliche Vorschau ----------------------------------------------
+
+export interface PublicActivity {
+  id: string; title: string; sport: SportId; city: string; meeting_point: string; lat: number; lng: number;
+  starts_at: string; distance_km: number; tempo: number; max_participants: number; participant_count: number;
+  beginner_friendly: boolean; breaks: boolean; description: string; route: Activity["route"] | null; host_name: string; status: "open" | "cancelled";
+}
+export async function fetchPublicActivity(id: string): Promise<PublicActivity | null> {
+  const { data, error } = await sb().rpc("public_activity", { p_id: id });
+  fail(error);
+  return ((data as PublicActivity[]) ?? [])[0] ?? null;
+}
+
+// --- Push-Nachrichten -----------------------------------------------------------
+
+export async function vapidPublicKey(): Promise<string> {
+  const { data } = await sb().from("app_config").select("value").eq("key", "vapid_public_key").maybeSingle();
+  if (data?.value) return data.value as string;
+  // Beim allerersten Mal erzeugt die Server-Funktion das Schlüsselpaar
+  const { data: r, error } = await sb().functions.invoke("send-push", { body: { setup: true } });
+  if (error) throw new Error("Push ist auf dem Server noch nicht eingerichtet.");
+  return (r as { publicKey: string }).publicKey;
+}
+export async function savePushSubscription(sub: PushSubscriptionJSON) {
+  const { error } = await sb().from("push_subscriptions").insert({
+    endpoint: sub.endpoint, p256dh: sub.keys?.p256dh, auth: sub.keys?.auth, user_agent: navigator.userAgent.slice(0, 200),
+  });
+  if (error && !/duplicate key/i.test(error.message)) fail(error);
+}
+export async function deletePushSubscription(endpoint: string) {
+  fail((await sb().from("push_subscriptions").delete().eq("endpoint", endpoint)).error);
 }
 export async function updateActivity(id: string, a: Partial<Activity>) {
   const { error } = await sb().from("activities").update(toRow(a)).eq("id", id);
