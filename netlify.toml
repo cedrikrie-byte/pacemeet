@@ -2,6 +2,13 @@
   command = "npm run build"
   publish = "dist"
 
+# Öffentliche Supabase-Werte (die "anon"-Schlüssel dürfen im Browser stehen; geschützt durch Row Level Security).
+# Niemals den service_role-Schlüssel hier eintragen.
+[build.environment]
+  VITE_SUPABASE_URL = "https://hzlrpthsptmsjatmrmaq.supabase.co"
+  VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6bHJwdGhzcHRtc2phdG1ybWFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI4NjA1NzksImV4cCI6MjEwODQzNjU3OX0._VMSSpHlLrW9JDGPR9ZklI7LPzTu6m8bnW2iElV0dZY"
+  NODE_VERSION = "20"
+
 [[headers]]
   for = "/*"
   [headers.values]
