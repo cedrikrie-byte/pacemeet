@@ -1,0 +1,69 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Layout: mobile-first App-Spalte (max. 440px), auf Desktop mit Info-Leiste daneben.
+   Farben als RGB-Tripel, damit Tailwind Deckkraft-Varianten bilden kann. */
+:root {
+  --bg: 243 244 247; --surface: 255 255 255; --raised: 234 236 241; --line: 220 224 231;
+  --ink: 16 19 27; --muted: 96 103 118; --accent: 235 66 33; --accent-ink: 255 255 255;
+  --run: 235 66 33; --ride: 37 99 235; --good: 20 140 84; --warn: 186 117 8; --bad: 205 38 48;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: 11 13 18; --surface: 20 23 30; --raised: 30 34 43; --line: 43 48 60;
+    --ink: 239 241 246; --muted: 150 157 173; --accent: 255 102 66; --accent-ink: 20 10 6;
+    --run: 255 102 66; --ride: 104 150 255; --good: 56 200 122; --warn: 238 172 54; --bad: 246 96 100;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"], .mode-dark {
+  --bg: 11 13 18; --surface: 20 23 30; --raised: 30 34 43; --line: 43 48 60;
+  --ink: 239 241 246; --muted: 150 157 173; --accent: 255 102 66; --accent-ink: 20 10 6;
+  --run: 255 102 66; --ride: 104 150 255; --good: 56 200 122; --warn: 238 172 54; --bad: 246 96 100;
+  color-scheme: dark;
+}
+.mode-light {
+  --bg: 243 244 247; --surface: 255 255 255; --raised: 234 236 241; --line: 220 224 231;
+  --ink: 16 19 27; --muted: 96 103 118; --accent: 235 66 33; --accent-ink: 255 255 255;
+  --run: 235 66 33; --ride: 37 99 235; --good: 20 140 84; --warn: 186 117 8; --bad: 205 38 48;
+  color-scheme: light;
+}
+
+html, body, #root { height: 100%; }
+body {
+  background: rgb(var(--bg)); color: rgb(var(--ink));
+  font-family: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent;
+}
+.font-display { font-stretch: 118%; letter-spacing: -0.01em; }
+.font-cond { font-family: "Archivo", system-ui, sans-serif; font-stretch: 78%; font-variant-numeric: tabular-nums; }
+.tnum { font-variant-numeric: tabular-nums; }
+h1, h2, h3 { text-wrap: balance; }
+.label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: rgb(var(--muted)); }
+
+:focus-visible { outline: 2px solid rgb(var(--accent)); outline-offset: 2px; border-radius: 10px; }
+
+.screen-in { animation: screenIn .28s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes screenIn { from { opacity: .4; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.sheet-in { animation: sheetIn .26s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes sheetIn { from { transform: translateY(24px); opacity: .6; } to { transform: none; opacity: 1; } }
+.pop { animation: pop .35s cubic-bezier(.3,1.6,.5,1) both; }
+@keyframes pop { from { transform: scale(.85); } to { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .screen-in, .sheet-in, .pop { animation: none; }
+  * { transition: none !important; }
+}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+input[type="range"] { accent-color: rgb(var(--accent)); }
+input, textarea, select { font: inherit; }
+
+/* MapLibre an das App-Design anpassen */
+.pm-map .maplibregl-ctrl-group { border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgb(0 0 0 / .12); }
+.pm-map .maplibregl-ctrl-attrib { font-size: 10px; }
+.pm-map .maplibregl-cooperative-gesture-screen { font-family: "Figtree", system-ui, sans-serif; font-size: 14px; }
+.pm-pin { cursor: grab; filter: drop-shadow(0 3px 4px rgb(0 0 0 / .3)); }
+.pm-pin:active { cursor: grabbing; }
