@@ -14,6 +14,8 @@ import type { Activity, AppEvent, AppState, LeagueRow, Message, Notif, Settings,
  * Die Browser-Sperre kann in installierten Web-Apps (vor allem iPhone) hängen bleiben.
  * Wartet höchstens acquireTimeout ms und läuft dann trotzdem weiter.
  */
+const DEBUG = (() => { try { return localStorage.getItem("pm-debug") === "1"; } catch { return false; } })();
+export const dlog = (...a: unknown[]) => { if (DEBUG) console.log("[pm]", Math.round(performance.now()), ...a); };
 let lockChain: Promise<unknown> = Promise.resolve();
 async function windowLock<R>(_name: string, acquireTimeout: number, fn: () => Promise<R>): Promise<R> {
   const prev = lockChain;
@@ -35,7 +37,7 @@ const fetchWithTimeout: typeof fetch = (input, init) => {
 let client: SupabaseClient | null = null;
 export function sb(): SupabaseClient {
   if (!client) client = createClient(SUPABASE_URL!, SUPABASE_ANON_KEY!, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, lock: windowLock },
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, lock: windowLock, debug: DEBUG },
     global: { fetch: fetchWithTimeout },
   });
   return client;
@@ -143,10 +145,12 @@ export type Snapshot = Pick<AppState, "users" | "activities" | "events" | "notif
 
 export async function loadSnapshot(uid: string, cityId: string | null, cityPos: [number, number] | null, radiusKm: number, base: Settings): Promise<Snapshot> {
   const db = sb();
+  dlog("snapshot start");
   const [{ data: me, error: e1 }, { data: priv }] = await Promise.all([
     db.from("profiles").select("*").eq("id", uid).single<ProfileRow>(),
     db.from("profile_private").select("*").eq("id", uid).maybeSingle<PrivateRow>(),
   ]);
+  dlog("snapshot me", !!me);
   fail(e1);
   // Bezugspunkt: gewählte Stadt, sonst Profilstadt, sonst Startgebiet
   const cityName = cityId || me!.city || CITIES[0].name;

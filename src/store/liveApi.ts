@@ -38,9 +38,10 @@ export function makeLiveApi(dispatch: React.Dispatch<Action>, get: () => AppStat
   let again = false;
 
   async function reload() {
-    if (loading) { again = true; return loading; }
+    if (loading) { be.dlog("reload queued"); again = true; return loading; }
     loading = (async () => {
       const s = get();
+      be.dlog("reload start", s.meId, s.auth);
       if (!s.meId) return;
       try {
         const snap = await be.loadSnapshot(s.meId, s.locationCity, s.locationPos ?? null, s.radiusKm, s.settings);
@@ -183,7 +184,9 @@ export function startLive(api: Api, dispatch: React.Dispatch<Action>, get: () =>
     if (entering === uid || (get().meId === uid && get().auth === "ready")) return;
     entering = uid;
     try {
+      be.dlog("enter", uid);
       const exists = await be.hasProfile(uid);
+      be.dlog("hasProfile", exists);
       set((s) => ({ ...s, meId: uid, email: email ?? s.email, auth: exists ? "loading" : "needsProfile" }));
       if (!exists) return;
       await api.reload();
