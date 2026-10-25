@@ -20,7 +20,7 @@ Wie du live gehst, steht Schritt für Schritt in **[LAUNCH.md](LAUNCH.md)**.
 npm install
 npm run dev        # http://localhost:5173
 npm run build      # Produktions-Build (installierbare Web-App) nach dist/
-npm run test:db    # 64 Tests für Datenbankregeln (läuft lokal, ohne Supabase)
+npm run test:db    # 86 Tests für Datenbankregeln (läuft lokal, ohne Supabase)
 SINGLEFILE=1 npx vite build   # eine einzelne HTML-Datei (Demo zum Weitergeben)
 ```
 
@@ -65,7 +65,10 @@ LAUNCH.md        Anleitung zum Live-Schalten
 | Wöchentliche Serien, ganze Serie absagen | fertig |
 | Teilnahmebestätigung, Zuverlässigkeit, Community-Liga, Event-Medaillen | fertig (Punkte serverseitig) |
 | Profil mit Foto, Alter (optional), Bestzeiten | fertig |
+| Stadt frei wählbar in ganz Deutschland (Umkreissuche ab Stadtmittelpunkt) | fertig |
 | Melden, Blockieren, Datenschutz-Einstellungen | fertig |
+| Moderation in der App: Meldungen prüfen, Nutzer sperren/entsperren (nur Admins) | fertig |
+| Community-Events mit Medaille in der App anlegen (nur Admins) | fertig |
 | Konto löschen, Daten herunterladen | fertig (Live) |
 | Installierbar als App (PWA) | fertig |
 | Impressum, Datenschutz, Nutzungsbedingungen | Entwürfe, vor Start prüfen lassen |

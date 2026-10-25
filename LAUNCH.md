@@ -34,7 +34,7 @@ Profilfotos, Liga, Konto löschen und Datenexport. Die App ist auf dem Handy ins
    Name `send-push`, Code einfügen, Deploy. Die Push-Schlüssel erzeugt sie beim ersten Aufruf selbst.
 6. Optional: `supabase/seed_events.sql` für ein erstes Community-Event (Daten vorher anpassen).
 
-> Die Datenbankregeln sind mit 49 automatischen Tests geprüft (`npm run test:db`).
+> Die Datenbankregeln sind mit 86 automatischen Tests geprüft (`npm run test:db`).
 
 ## 4. Anmeldung einstellen
 
@@ -92,9 +92,10 @@ Unter **Authentication**:
 
 ## 9. Betrieb
 
-- **Meldungen prüfen:** Supabase → Table Editor → `reports`. Status auf `reviewed`/`actioned` setzen.
-- **Nutzer sperren:** Supabase → Authentication → Users → Nutzer → *Ban user* oder löschen.
-- **Events anlegen:** Tabelle `events` (Vorlage in `supabase/seed_events.sql`).
+- **Meldungen prüfen und Nutzer sperren:** in der App unter Profil → Einstellungen → *Moderation* (nur für Admins).
+  Weitere Admins: im SQL-Editor `insert into public.admins (user_id) select id from auth.users where email = '…';`
+- **Events anlegen:** in der App unter *Moderation → Events*.
+- **Rauchtest der Live-Datenbank:** Inhalt von `supabase/tests/live_smoke_test.sql` im SQL-Editor ausführen. Er rollt alles zurück und zeigt das Ergebnis als Meldung.
 - **Backups:** Im kostenlosen Supabase-Tarif gibt es keine automatischen Backups, die du selbst zurückspielen kannst. Zum Start den Pro-Tarif nehmen.
 - **Pausierung:** Kostenlose Supabase-Projekte werden nach etwa einer Woche ohne Nutzung pausiert. Für den echten Betrieb Pro-Tarif.
 
@@ -112,5 +113,4 @@ Unter **Authentication**:
 
 - **App-Store-Versionen** für iOS und Android (die Web-App lässt sich mit Capacitor verpacken)
 - **Eigene Kartenserver** oder ein Kartenanbieter mit Vertrag, sobald viele Nutzer aktiv sind
-- **Moderationsoberfläche** statt Supabase-Tabellen
 - **Weitere Sprachen** (Texte in Sprachdateien auslagern)
