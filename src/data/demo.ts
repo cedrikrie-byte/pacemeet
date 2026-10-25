@@ -1,3 +1,4 @@
+import { DEFAULT_ALERTS } from "../lib/alerts";
 import type { Activity, AppState, Message, Route, User } from "../types";
 import { buildEvents } from "./events";
 import { placeByName } from "./places";
@@ -138,6 +139,7 @@ export function buildDemoState(): AppState {
       theme: "system", units: "metric", language: "de-DE",
       profileVisibility: "participants", showPace: true, showHistory: false, showAwards: true,
       notify: { changes: true, chat: true, joins: true, reminders: true },
+      alerts: { ...DEFAULT_ALERTS },
     },
     league: { optIn: false, visibility: "private" },
     blocked: [],

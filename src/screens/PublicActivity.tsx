@@ -45,7 +45,7 @@ export function PublicActivityScreen({ id, onJoin, onDismiss }: { id: string; on
         <span><b className="block font-cond text-[20px]">{fmtTempo(a.sport, Number(a.tempo), "metric")}</b><span className="text-[11.5px] text-muted">{tl.text}</span></span>
         <span><b className="block font-cond text-[20px]">{fmtDuration(durationMin(a.sport, Number(a.distance_km), Number(a.tempo)))}</b><span className="text-[11.5px] text-muted">ca. Dauer</span></span>
       </div>
-      <MapView points={planned ? a.route!.points : []} center={[a.lat, a.lng]} centerLabel="Start" accent={a.sport} spanKm={a.sport === "run" ? 3 : 10} />
+      <MapView points={planned ? a.route!.points : []} center={[a.lat, a.lng]} centerLabel="Treffpunkt" accent={a.sport} spanKm={a.sport === "run" ? 3 : 10} />
       {a.description && <p className="max-w-[65ch] text-[15px] leading-relaxed">{a.description}</p>}
       <div className="flex flex-wrap gap-2">
         {a.beginner_friendly && <span className="inline-flex items-center gap-1.5 rounded-full bg-good/12 px-3 py-1.5 text-[13px] font-semibold text-good"><Sprout size={14} /> Anfänger willkommen</span>}

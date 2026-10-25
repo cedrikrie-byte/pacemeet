@@ -91,7 +91,7 @@ function placeholder(id: string): User {
 function toActivity(r: ActivityRow, parts: PartRow[], msgs: MsgRow[]): Activity {
   const mine = parts.filter((p) => p.activity_id === r.id);
   return {
-    id: r.id, title: r.title, sport: r.sport, city: r.city, meetingPoint: r.meeting_point, lat: r.lat, lng: r.lng,
+    id: r.id, title: r.title, sport: r.sport, city: r.city, meetingPoint: r.meeting_point, lat: Number(r.lat), lng: Number(r.lng),
     startsAt: r.starts_at, distanceKm: Number(r.distance_km), tempo: Number(r.tempo), maxParticipants: r.max_participants,
     description: r.description, beginnerFriendly: r.beginner_friendly, breaks: r.breaks, hostId: r.host_id,
     participants: mine.map((p) => p.user_id), participantCount: r.participant_count, status: r.status,
@@ -135,7 +135,7 @@ export async function createProfile(uid: string, p: Partial<User>, settings: Set
   const { error: e2 } = await sb().from("profile_private").insert({ id: uid, settings: settingsToStore(settings) });
   fail(e2);
 }
-const settingsToStore = (s: Settings) => ({ theme: s.theme, units: s.units, language: s.language, showPace: s.showPace, showHistory: s.showHistory, showAwards: s.showAwards, notify: s.notify });
+const settingsToStore = (s: Settings) => ({ theme: s.theme, units: s.units, language: s.language, showPace: s.showPace, showHistory: s.showHistory, showAwards: s.showAwards, notify: s.notify, alerts: s.alerts });
 
 // --- Laden ----------------------------------------------------------------------
 
@@ -153,6 +153,12 @@ export async function loadSnapshot(uid: string, cityId: string | null, cityPos: 
   const known = CITIES.find((c) => c.id === cityName || c.name.toLowerCase() === cityName.toLowerCase());
   const center: [number, number] = cityPos ?? ((!cityId || cityId === me!.city) && me!.city_lat != null && me!.city_lng != null ? [me!.city_lat, me!.city_lng] : null) ?? (known ? [known.lat, known.lng] : [CITIES[0].lat, CITIES[0].lng]);
   const city = { id: cityName, lat: center[0], lng: center[1] };
+  // Ältere Profile ohne Stadtmittelpunkt nachtragen (wird für Hinweise in der Nähe gebraucht)
+  const homeKnown = CITIES.find((c) => c.id === me!.city || c.name.toLowerCase() === (me!.city ?? "").toLowerCase());
+  if (me!.city_lat == null && homeKnown) {
+    me!.city_lat = homeKnown.lat; me!.city_lng = homeKnown.lng;
+    void db.from("profiles").update({ city_lat: homeKnown.lat, city_lng: homeKnown.lng }).eq("id", uid).then(() => undefined, () => undefined);
+  }
 
   const [near, mine, notifs, blocks, events, rel, status] = await Promise.all([
     db.rpc("activities_near", { p_lat: city.lat, p_lng: city.lng, p_radius_km: radiusKm }),
@@ -200,7 +206,7 @@ export async function loadSnapshot(uid: string, cityId: string | null, cityPos: 
     notifications: (notifs.data as NotifRow[]).map((n) => ({ id: n.id, kind: n.kind, text: n.body, activityId: n.activity_id ?? undefined, at: n.created_at, read: n.read })),
     blocked: (blocks.data as { blocked_id: string }[]).map((b) => b.blocked_id),
     league: { optIn: me!.league_opt_in, visibility: me!.league_visibility },
-    settings: { ...base, ...(priv?.settings ?? {}), profileVisibility: me!.profile_visibility, notify: { ...base.notify, ...(priv?.settings?.notify ?? {}) } },
+    settings: { ...base, ...(priv?.settings ?? {}), profileVisibility: me!.profile_visibility, notify: { ...base.notify, ...(priv?.settings?.notify ?? {}) }, alerts: { ...base.alerts, ...(priv?.settings?.alerts ?? {}) } },
     profileVisibility: me!.profile_visibility,
     myStatus: (() => { const r = (status.data as { is_admin: boolean; suspended: boolean; suspended_reason: string | null }[] | null)?.[0]; return r ? { isAdmin: r.is_admin, suspended: r.suspended, reason: r.suspended_reason ?? undefined } : undefined; })(),
   };

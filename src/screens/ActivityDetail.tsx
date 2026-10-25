@@ -87,7 +87,7 @@ export function ActivityDetail({ id }: { id: string }) {
             <h2 className="label">Treffpunkt & Route</h2>
             {planned && <span className="text-[12px] font-semibold text-muted tnum">Skizze: {fmtDistance(routeLengthKm(a.route!.points), units)}</span>}
           </div>
-          <MapView points={planned ? a.route!.points : []} center={[a.lat, a.lng]} centerLabel="Start" accent={a.sport} spanKm={a.sport === "run" ? 3 : 10} />
+          <MapView points={planned ? a.route!.points : []} center={[a.lat, a.lng]} centerLabel="Treffpunkt" accent={a.sport} spanKm={a.sport === "run" ? 3 : 10} />
           <div className="flex items-start justify-between gap-3">
             <p className="flex items-start gap-1.5 text-[15px] font-semibold"><MapPin size={17} className="mt-0.5 shrink-0 text-accent" />{a.meetingPoint}</p>
             <a href={osm} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1 text-[13px] font-semibold text-accent">Karte <ExternalLink size={13} /></a>

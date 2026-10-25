@@ -103,7 +103,7 @@ export interface Activity {
   updatedAt?: string;
 }
 
-export type NotifKind = "change" | "cancel" | "join" | "chat" | "reminder" | "system";
+export type NotifKind = "change" | "cancel" | "join" | "chat" | "reminder" | "system" | "nearby";
 export interface Notif { id: string; kind: NotifKind; text: string; activityId?: string; at: string; read: boolean; }
 
 export interface Settings {
@@ -115,6 +115,20 @@ export interface Settings {
   showHistory: boolean;
   showAwards: boolean;
   notify: { changes: boolean; chat: boolean; joins: boolean; reminders: boolean };
+  alerts: AlertPrefs;
+}
+
+/** Hinweis bei neuen passenden Aktivitäten in der Nähe (wird auch auf dem Server ausgewertet). */
+export interface AlertPrefs {
+  on: boolean;
+  radiusKm: number;
+  /** leer = Sportarten aus dem Profil */
+  sports?: SportId[];
+  /** true = Tempo passend zum eigenen Profil-Tempo */
+  auto: boolean;
+  runPaceMin?: number; runPaceMax?: number;   // s/km
+  rideSpeedMin?: number; rideSpeedMax?: number; // km/h
+  runMaxKm: number; rideMaxKm: number;
 }
 
 export interface LeagueSettings { optIn: boolean; visibility: "private" | "friends" | "local"; }

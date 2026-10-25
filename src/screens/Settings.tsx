@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Download, FileText, Globe, Info, LogOut, ShieldCheck, Monitor, Moon, RotateCcw, Sun, Trash2 } from "lucide-react";
 import { LIVE } from "../config/backend";
 import { PushSetting } from "../components/PushSetting";
+import { AlertSettings } from "../components/AlertSettings";
 import { useApp } from "../store/AppStore";
 import { useNav } from "../nav";
 import { Avatar, Button, DemoTag, Segmented, Sheet, Toggle, TopBar, cx } from "../components/ui";
@@ -72,6 +73,7 @@ export function Settings() {
 
         <Group title="Benachrichtigungen" tag={LIVE ? undefined : <DemoTag>nur in der App</DemoTag>}>
           {LIVE && <PushSetting />}
+          <AlertSettings />
           <Toggle id="n-changes" checked={s.notify.changes} onChange={(v) => api.setSettings({ notify: { ...s.notify, changes: v } })} label="Änderungen und Absagen" desc="Empfohlen. Zeit, Treffpunkt oder Absage einer Aktivität." />
           <Toggle id="n-chat" checked={s.notify.chat} onChange={(v) => api.setSettings({ notify: { ...s.notify, chat: v } })} label="Neue Chat-Nachrichten" />
           <Toggle id="n-joins" checked={s.notify.joins} onChange={(v) => api.setSettings({ notify: { ...s.notify, joins: v } })} label="Neue Teilnehmende bei meinen Aktivitäten" />

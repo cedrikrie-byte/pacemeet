@@ -1,5 +1,6 @@
 import type { AppState } from "../types";
 import { buildDemoState } from "../data/demo";
+import { DEFAULT_ALERTS } from "./alerts";
 
 const KEY = "pacemeet-demo-state";
 const VERSION = 6;
@@ -9,7 +10,7 @@ export function loadState(): AppState {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const s = JSON.parse(raw) as AppState;
-      if (s.version === VERSION) return s;
+      if (s.version === VERSION) return { ...s, settings: { ...s.settings, alerts: { ...DEFAULT_ALERTS, ...(s.settings?.alerts ?? {}) } } };
     }
   } catch { /* Speicher nicht verfügbar – Demo startet frisch */ }
   return buildDemoState();

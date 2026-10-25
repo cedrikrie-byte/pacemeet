@@ -120,8 +120,8 @@ function LiveMap({ points, center, centerLabel, editable, onAdd, markers, select
         m.addLayer({ id: "route-casing", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#ffffff", "line-width": 8 } });
         m.addLayer({ id: "route", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": col, "line-width": 4.5 } });
         m.addLayer({ id: "end", type: "circle", source: "end", paint: { "circle-radius": 5, "circle-color": col, "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
-        m.addLayer({ id: "start", type: "circle", source: "start", paint: { "circle-radius": 7, "circle-color": ink, "circle-stroke-color": "#fff", "circle-stroke-width": 2.5 } });
-        m.addLayer({ id: "start-label", type: "symbol", source: "start", layout: { "text-field": ["get", "label"], "text-font": ["Noto Sans Bold"], "text-size": 12, "text-offset": [0, -1.4], "text-anchor": "bottom" }, paint: { "text-color": ink, "text-halo-color": "#fff", "text-halo-width": 1.5 } });
+        m.addLayer({ id: "start", type: "circle", source: "start", paint: { "circle-opacity": 0, "circle-stroke-opacity": 0, "circle-radius": 7, "circle-color": ink, "circle-stroke-color": "#fff", "circle-stroke-width": 2.5 } });
+        m.addLayer({ id: "start-label", type: "symbol", source: "start", layout: { "text-field": ["get", "label"], "text-font": ["Noto Sans Bold"], "text-size": 12, "text-offset": [0, -3.9], "text-anchor": "bottom" }, paint: { "text-color": ink, "text-halo-color": "#fff", "text-halo-width": 1.5 } });
         m.addLayer({ id: "acts", type: "circle", source: "acts", paint: {
           "circle-radius": ["case", ["boolean", ["get", "selected"], false], 10, 7.5],
           "circle-color": ["match", ["get", "sport"], "run", run, ride],
@@ -133,12 +133,13 @@ function LiveMap({ points, center, centerLabel, editable, onAdd, markers, select
         m.addLayer({ id: "pois", type: "circle", source: "pois", paint: { "circle-radius": 6, "circle-color": col, "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
         m.addLayer({ id: "pois-label", type: "symbol", source: "pois", layout: { "text-field": ["get", "label"], "text-font": ["Noto Sans Bold"], "text-size": 12, "text-offset": [0, -1.2], "text-anchor": "bottom" }, paint: { "text-color": ink, "text-halo-color": "#fff", "text-halo-width": 1.5 } });
         if (editable || pin) m.getCanvas().style.cursor = "crosshair";
-        if (pin) {
+        // Fester Pin für den Treffpunkt (Detailansicht), verschiebbarer Pin beim Erstellen
+        if (pin || !data.current.markers) {
           const elPin = document.createElement("div");
           elPin.className = "pm-pin";
-          elPin.setAttribute("aria-label", "Treffpunkt, zum Verschieben ziehen");
+          elPin.setAttribute("aria-label", pin ? "Treffpunkt, zum Verschieben ziehen" : "Treffpunkt");
           elPin.innerHTML = `<svg width="34" height="44" viewBox="0 0 34 44"><path d="M17 43s15-14.6 15-26A15 15 0 0 0 2 17c0 11.4 15 26 15 26z" fill="${col}" stroke="#fff" stroke-width="2.5"/><circle cx="17" cy="17" r="5.5" fill="#fff"/></svg>`;
-          const mk = new ml.Marker({ element: elPin, draggable: true, anchor: "bottom" }).setLngLat([data.current.center[1], data.current.center[0]]).addTo(m);
+          const mk = new ml.Marker({ element: elPin, draggable: !!pin, anchor: "bottom" }).setLngLat([data.current.center[1], data.current.center[0]]).addTo(m);
           mk.on("dragend", () => { const ll = mk.getLngLat(); cb.current.onPinMove?.([ll.lat, ll.lng]); });
           pinRef.current = mk;
         }
@@ -167,7 +168,9 @@ function LiveMap({ points, center, centerLabel, editable, onAdd, markers, select
     const m = map.current; if (!m || !ready) return;
     (m.getSource("route") as GeoJSONSource).setData(line(points.length > 1 ? points : []));
     (m.getSource("end") as GeoJSONSource).setData(pointFc(editable && points.length > 1 ? [{ lat: points[points.length - 1][0], lng: points[points.length - 1][1], props: {} }] : []));
+    // Beschriftung über dem Pin; der Pin selbst ist ein Marker
     (m.getSource("start") as GeoJSONSource).setData(pointFc(markers || pin ? [] : [{ lat: center[0], lng: center[1], props: { label: centerLabel ?? "" } }]));
+    pinRef.current?.getElement().style.setProperty("display", markers ? "none" : "");
     (m.getSource("pois") as GeoJSONSource).setData(pointFc((pois ?? []).map((p) => ({ lat: p.lat, lng: p.lng, props: { label: p.label } }))));
     pinRef.current?.setLngLat([center[1], center[0]]);
     (m.getSource("acts") as GeoJSONSource).setData(pointFc((markers ?? []).map((k) => ({ lat: k.lat, lng: k.lng, props: { id: k.id, sport: k.sport, selected: k.id === selectedId } }))));

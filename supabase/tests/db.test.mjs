@@ -245,6 +245,34 @@ ok((await fails(U.C, "delete from events where id = 'winter'")) === null && (awa
 await as(U.A, "delete from events where id = 'winter'");
 ok((await as(U.C, "select count(*)::int c from events where id = 'winter'")).rows[0].c === 0, "Admin kann Event löschen");
 
+// Hinweise bei neuen passenden Aktivitäten in der Nähe
+await db.exec("reset role");
+await db.query("update profiles set city='essen', city_lat=51.46, city_lng=7.01, pace=330, speed=26, sports='{run,ride}' where id=$1", [U.C]);
+await db.query("update profiles set city='essen', city_lat=51.46, city_lng=7.01, pace=420, sports='{run}' where id=$1", [U.E]);
+await db.query("update profile_private set settings = jsonb_set(settings, '{alerts}', '{\"on\": true, \"radiusKm\": 15, \"auto\": true, \"runMaxKm\": 12, \"rideMaxKm\": 80}') where id=$1", [U.C]);
+await db.query("update profile_private set settings = jsonb_set(settings, '{alerts}', '{\"on\": false}') where id=$1", [U.E]);
+const nearCount = async (u) => { await db.exec("reset role"); return (await db.query("select count(*)::int c from notifications where user_id=$1 and kind='nearby'", [u])).rows[0].c; };
+const mk = (title, tempo, km, lat = 51.43, sport = 'run') => as(U.A, `insert into activities (title, sport, city, meeting_point, lat, lng, starts_at, distance_km, tempo, max_participants)
+  values ($1, $5, 'essen', 'Grugapark', $4, 7.0, now() + interval '2 days', $3, $2, 6) returning id`, [title, tempo, km, lat, sport]);
+const c0 = await nearCount(U.C);
+await mk("Passt genau", 340, 8);
+ok(await nearCount(U.C) === c0 + 1, "Passende Aktivität in der Nähe löst einen Hinweis aus");
+const nb = (await db.query("select body from notifications where user_id=$1 and kind='nearby' order by created_at desc limit 1", [U.C])).rows[0].body;
+ok(nb.includes("Passt genau") && nb.includes("5:40 /km") && nb.includes("km entfernt"), "Hinweistext nennt Titel, Tempo und Entfernung: " + nb);
+await mk("Viel zu schnell", 270, 8);
+ok(await nearCount(U.C) === c0 + 1, "Zu schnelle Läufe lösen keinen Hinweis aus");
+await mk("Viel zu lang", 340, 21);
+ok(await nearCount(U.C) === c0 + 1, "Zu lange Läufe lösen keinen Hinweis aus");
+await mk("Zu weit weg", 340, 8, 51.8);
+ok(await nearCount(U.C) === c0 + 1, "Aktivitäten außerhalb des Umkreises lösen keinen Hinweis aus");
+await mk("Radrunde", 25, 50, 51.43, 'ride');
+ok(await nearCount(U.C) === c0 + 2, "Passende Radtour löst einen Hinweis aus");
+ok(await nearCount(U.E) === 0, "Ausgeschaltete Hinweise bleiben aus");
+ok(await nearCount(U.A) === 0, "Gastgeber bekommt keinen Hinweis zur eigenen Aktivität");
+await db.query("update profile_private set settings = jsonb_set(settings, '{alerts}', '{\"on\": true, \"radiusKm\": 15, \"auto\": false, \"runPaceMin\": 260, \"runPaceMax\": 300, \"runMaxKm\": 12}') where id=$1", [U.C]);
+await mk("Tempo selbst gewählt", 280, 8);
+ok(await nearCount(U.C) === c0 + 3, "Eigene Tempo-Spanne wird beachtet");
+
 // Konto löschen
 await as(U.B, "select delete_my_account()");
 await db.exec("reset role");

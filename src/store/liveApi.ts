@@ -1,3 +1,4 @@
+import { DEFAULT_ALERTS } from "../lib/alerts";
 import type { Action, Api, ToastFn } from "./AppStore";
 import type { Activity, AppState, LeagueSettings, Settings, User } from "../types";
 import * as be from "../backend/supabase";
@@ -14,6 +15,7 @@ export function buildLiveState(): AppState {
       theme: "system", units: "metric", language: "de-DE", profileVisibility: "participants",
       showPace: true, showHistory: false, showAwards: true,
       notify: { changes: true, chat: true, joins: true, reminders: true },
+      alerts: { ...DEFAULT_ALERTS },
     },
     league: { optIn: false, visibility: "private" },
   };
@@ -128,7 +130,7 @@ export function makeLiveApi(dispatch: React.Dispatch<Action>, get: () => AppStat
     unblock(userId: string) { void run(() => be.unblock(get().meId, userId), "Blockierung aufgehoben"); },
     report(userId: string, reason: string) { void run(() => be.report(get().meId, userId, reason), "Meldung gesendet. Wir prüfen sie."); },
     setSettings(p: Partial<Settings>) {
-      set((s) => ({ ...s, settings: { ...s.settings, ...p, notify: { ...s.settings.notify, ...(p.notify || {}) } } }));
+      set((s) => ({ ...s, settings: { ...s.settings, ...p, notify: { ...s.settings.notify, ...(p.notify || {}) }, alerts: { ...s.settings.alerts, ...(p.alerts || {}) } } }));
       window.clearTimeout(settingsTimer);
       settingsTimer = window.setTimeout(() => { const s = get(); if (s.meId) void be.saveSettings(s.meId, s.settings).catch((e) => toast(be.friendly(e.message), "bad")); }, 600);
     },

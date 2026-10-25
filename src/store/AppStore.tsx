@@ -36,7 +36,7 @@ export type ToastFn = (t: string, tone?: Toast["tone"]) => void;
 /** Demo-Modus: alles lokal im Browser, andere Nutzer werden simuliert. */
 function makeDemoApi(dispatch: React.Dispatch<Action>, get: () => AppState, toast: ToastFn) {
   const set = (fn: (s: AppState) => AppState) => dispatch({ type: "set", fn });
-  const notifyKey: Record<NotifKind, keyof Settings["notify"] | null> = { change: "changes", cancel: "changes", join: "joins", chat: "chat", reminder: "reminders", system: null };
+  const notifyKey: Record<NotifKind, keyof Settings["notify"] | null> = { change: "changes", cancel: "changes", join: "joins", chat: "chat", reminder: "reminders", system: null, nearby: null };
   const notify = (kind: NotifKind, text: string, activityId?: string) => set((s) => {
     const k = notifyKey[kind];
     if (k && !s.settings.notify[k]) return s;
@@ -124,7 +124,7 @@ function makeDemoApi(dispatch: React.Dispatch<Action>, get: () => AppState, toas
     block(userId: string) { set((s) => ({ ...s, blocked: [...new Set([...s.blocked, userId])] })); toast("Blockiert. Du siehst diese Person nicht mehr."); },
     unblock(userId: string) { set((s) => ({ ...s, blocked: s.blocked.filter((b) => b !== userId) })); toast("Blockierung aufgehoben"); },
     report(userId: string, reason: string) { set((s) => ({ ...s, reports: [...s.reports, { userId, reason, at: now() }] })); toast("Meldung gesendet. Unser Team prüft sie.", "good"); },
-    setSettings(p: Partial<Settings>) { set((s) => ({ ...s, settings: { ...s.settings, ...p, notify: { ...s.settings.notify, ...(p.notify || {}) } } })); },
+    setSettings(p: Partial<Settings>) { set((s) => ({ ...s, settings: { ...s.settings, ...p, notify: { ...s.settings.notify, ...(p.notify || {}) }, alerts: { ...s.settings.alerts, ...(p.alerts || {}) } } })); },
     setLeague(p: Partial<LeagueSettings>) { set((s) => ({ ...s, league: { ...s.league, ...p } })); },
     setLocation(city: string, pos?: [number, number]) { set((s) => ({ ...s, locationCity: city, locationPos: pos ?? knownCityPos(city) ?? undefined })); },
     setRadius(km: number) { set((s) => ({ ...s, radiusKm: km })); },
