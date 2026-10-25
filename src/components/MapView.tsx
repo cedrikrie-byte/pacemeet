@@ -91,7 +91,10 @@ function LiveMap({ points, center, centerLabel, editable, onAdd, markers, select
   useEffect(() => {
     let cancelled = false;
     let m: MLMap | null = null;
-    const failTimer = window.setTimeout(() => { if (!map.current?.loaded()) onFail(); }, 10000);
+    // Nur auf die Skizze wechseln, wenn der Kartenstil gar nicht lädt.
+    // (map.loaded() ist auch bei funktionierender Karte false, solange noch Kacheln nachladen.)
+    let styleReady = false;
+    const failTimer = window.setTimeout(() => { if (!styleReady) onFail(); }, 15000);
     import("maplibre-gl").then(({ default: ml }) => {
       if (cancelled || !el.current) return;
       const zoom = Math.max(10, Math.min(15.5, Math.log2(40000 / Math.max(1, spanKm)) - 1.5));
@@ -103,8 +106,11 @@ function LiveMap({ points, center, centerLabel, editable, onAdd, markers, select
       m.touchZoomRotate.disableRotation();
       m.addControl(new ml.NavigationControl({ showCompass: false }), "top-right");
       map.current = m;
-      m.on("load", () => {
-        if (!m || !el.current) return;
+      let setupDone = false;
+      const setup = () => {
+        styleReady = true; window.clearTimeout(failTimer);
+        if (setupDone || !m || !el.current || !m.isStyleLoaded()) return;
+        setupDone = true;
         const col = rgbVar(el.current, accent);
         const run = rgbVar(el.current, "run"), ride = rgbVar(el.current, "ride"), ink = rgbVar(el.current, "ink");
         m.addSource("route", { type: "geojson", data: line([]) });
@@ -137,7 +143,11 @@ function LiveMap({ points, center, centerLabel, editable, onAdd, markers, select
           pinRef.current = mk;
         }
         setReady(true);
-      });
+      };
+      // Einrichten, sobald der Stil da ist (oder spätestens beim ersten fertigen Bild)
+      m.on("style.load", setup);
+      m.on("load", setup);
+      m.on("idle", setup);
       m.on("click", (e) => {
         if (!m) return;
         if (m.getLayer("acts")) {
