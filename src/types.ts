@@ -121,7 +121,7 @@ export interface LeagueSettings { optIn: boolean; visibility: "private" | "frien
 
 export interface Report { userId: string; reason: string; at: string; }
 
-export type AuthStatus = "demo" | "loading" | "signedOut" | "needsProfile" | "ready";
+export type AuthStatus = "demo" | "loading" | "signedOut" | "needsProfile" | "ready" | "error";
 export interface LeagueRow { userId: string; name: string; photo?: string; monthXp: number; isMe: boolean; }
 
 export interface AppState {
@@ -131,6 +131,8 @@ export interface AppState {
   leagueBoard?: { local: LeagueRow[]; friends: LeagueRow[] };
   /** Live-Modus: eigene Rolle und Sperrstatus */
   myStatus?: { isAdmin: boolean; suspended: boolean; reason?: string };
+  /** Live-Modus: letzter Ladefehler (für den Ladebildschirm) */
+  liveError?: string;
   onboarded: boolean;
   meId: string;
   locationCity: string;      // Name (oder Kürzel aus CITIES) der gewählten Stadt

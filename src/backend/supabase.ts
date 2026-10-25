@@ -9,9 +9,35 @@ import type { Activity, AppEvent, AppState, LeagueRow, Message, Notif, Settings,
  * geschrieben und auf Änderungen gehört.
  */
 
+/**
+ * Einfache Sperre innerhalb dieses Fensters statt navigator.locks.
+ * Die Browser-Sperre kann in installierten Web-Apps (vor allem iPhone) hängen bleiben.
+ * Wartet höchstens acquireTimeout ms und läuft dann trotzdem weiter.
+ */
+let lockChain: Promise<unknown> = Promise.resolve();
+async function windowLock<R>(_name: string, acquireTimeout: number, fn: () => Promise<R>): Promise<R> {
+  const prev = lockChain;
+  let release!: () => void;
+  lockChain = new Promise<void>((r) => (release = r));
+  const wait = acquireTimeout > 0 ? Math.min(acquireTimeout, 5000) : 5000;
+  await Promise.race([prev.catch(() => undefined), new Promise((r) => setTimeout(r, wait))]);
+  try { return await fn(); } finally { release(); }
+}
+
+/** Jede Anfrage bekommt ein Zeitlimit, damit die App nie endlos wartet. */
+const fetchWithTimeout: typeof fetch = (input, init) => {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 30000);
+  if (init?.signal) init.signal.addEventListener("abort", () => ctrl.abort());
+  return fetch(input, { ...init, signal: ctrl.signal }).finally(() => clearTimeout(t));
+};
+
 let client: SupabaseClient | null = null;
 export function sb(): SupabaseClient {
-  if (!client) client = createClient(SUPABASE_URL!, SUPABASE_ANON_KEY!, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
+  if (!client) client = createClient(SUPABASE_URL!, SUPABASE_ANON_KEY!, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, lock: windowLock },
+    global: { fetch: fetchWithTimeout },
+  });
   return client;
 }
 
@@ -39,7 +65,7 @@ function fail(error: { message: string } | null): void {
 }
 /** Technische Fehlermeldungen in verständliche Sätze übersetzen. */
 export function friendly(msg: string): string {
-  if (/Failed to fetch|NetworkError|network/i.test(msg)) return "Keine Verbindung. Prüfe deine Internetverbindung und versuche es erneut.";
+  if (/Failed to fetch|NetworkError|network|aborted|AbortError/i.test(msg)) return "Keine Verbindung oder Zeitüberschreitung. Prüfe deine Internetverbindung und versuche es erneut.";
   if (/Token has expired or is invalid|otp_expired|invalid otp/i.test(msg)) return "Der Code ist falsch oder abgelaufen. Prüfe ihn oder fordere einen neuen an.";
   if (/rate limit|too many/i.test(msg)) return "Zu viele Versuche. Bitte warte kurz und versuche es dann erneut.";
   if (/JWT|invalid claim|session.*expired/i.test(msg)) return "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.";
@@ -86,8 +112,9 @@ export async function sendCode(email: string) {
   fail(error);
 }
 export async function verifyCode(email: string, token: string) {
-  const { error } = await sb().auth.verifyOtp({ email, token, type: "email" });
+  const { data, error } = await sb().auth.verifyOtp({ email, token, type: "email" });
   fail(error);
+  return data.user ? { id: data.user.id, email: data.user.email ?? email } : null;
 }
 export async function signOut() { await sb().auth.signOut(); }
 export async function currentUser() {

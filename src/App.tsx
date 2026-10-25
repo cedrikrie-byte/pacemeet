@@ -115,6 +115,7 @@ function Shell() {
           <NavCtx.Provider value={nav}>
             <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
               {LIVE && state.auth === "loading" ? <Splash />
+                : LIVE && state.auth === "error" ? <LoadProblem message={state.liveError} />
                 : !ready ? (current.name === "legal" ? screen
                   : LIVE && shareId && !wantsLogin && state.auth === "signedOut"
                     ? <PublicActivityScreen id={shareId} onJoin={() => setWantsLogin(true)} onDismiss={() => { setShareId(null); clearHash(); }} />
@@ -145,9 +146,41 @@ function Shell() {
 }
 
 function Splash() {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => { const t = window.setTimeout(() => setSlow(true), 10000); return () => window.clearTimeout(t); }, []);
   return (
-    <div className="grid h-full place-items-center">
-      <div className="flex flex-col items-center gap-3 text-muted"><Logo size={48} /><span className="text-[13px] font-semibold">Wird geladen …</span></div>
+    <div className="grid h-full place-items-center px-6">
+      <div className="flex flex-col items-center gap-3 text-center text-muted">
+        <Logo size={48} />
+        <span className="text-[13px] font-semibold">Wird geladen …</span>
+        {slow && (<>
+          <p className="mt-2 max-w-[280px] text-[13px]">Das dauert länger als gewohnt. Prüf deine Verbindung oder lade neu.</p>
+          <RecoveryButtons />
+        </>)}
+      </div>
+    </div>
+  );
+}
+
+function LoadProblem({ message }: { message?: string | null }) {
+  return (
+    <div className="grid h-full place-items-center px-6">
+      <div className="flex flex-col items-center gap-3 text-center">
+        <Logo size={48} />
+        <h2 className="font-display text-[18px] font-extrabold">Laden hat nicht geklappt</h2>
+        <p className="max-w-[300px] text-[13.5px] text-muted">{message || "Die Verbindung zum Server ist abgebrochen."} Lade neu – deine Anmeldung bleibt erhalten.</p>
+        <RecoveryButtons />
+      </div>
+    </div>
+  );
+}
+
+function RecoveryButtons() {
+  const { api } = useApp();
+  return (
+    <div className="mt-2 flex gap-2">
+      <button onClick={() => window.location.reload()} className="rounded-full bg-accent px-5 py-2.5 text-[14px] font-bold text-accent-ink">Neu laden</button>
+      <button onClick={() => { void Promise.resolve(api.signOut()).catch(() => undefined).finally(() => window.location.reload()); }} className="rounded-full border border-line px-5 py-2.5 text-[14px] font-semibold">Abmelden</button>
     </div>
   );
 }

@@ -23,6 +23,9 @@ function savePrefs(s: AppState) {
   try { localStorage.setItem("pacemeet-live-prefs", JSON.stringify({ radiusKm: s.radiusKm, locationCity: s.locationCity, locationPos: s.locationPos })); } catch { /* ignorieren */ }
 }
 
+/** Wird von startLive gesetzt: nach der Code-Bestätigung direkt anmelden. */
+let enterHook: ((uid: string, email?: string) => Promise<void>) | null = null;
+
 /** Wird von startLive gesetzt: nach dem Anlegen des Profils Echtzeit starten. */
 let afterProfile: (() => void) | null = null;
 
@@ -40,12 +43,15 @@ export function makeLiveApi(dispatch: React.Dispatch<Action>, get: () => AppStat
       try {
         const snap = await be.loadSnapshot(s.meId, s.locationCity, s.locationPos ?? null, s.radiusKm, s.settings);
         const before = new Set(get().notifications.map((n) => n.id));
-        set((cur) => ({ ...cur, ...snap, auth: "ready", onboarded: true }));
+        set((cur) => ({ ...cur, ...snap, auth: "ready", onboarded: true, liveError: undefined }));
         // Neue Benachrichtigung kurz anzeigen (nicht beim ersten Laden)
         const fresh = snap.notifications.find((n) => !n.read && !before.has(n.id));
         if (before.size && fresh) toast(fresh.text);
       } catch (e) {
-        toast((e as Error).message, "bad");
+        const msg = be.friendly((e as Error).message);
+        // Beim ersten Laden: Fehlerbildschirm mit "Erneut versuchen" statt endlosem Laden
+        if (get().auth === "loading") set((cur) => ({ ...cur, auth: "error", liveError: msg }));
+        else toast(msg, "bad");
       }
     })();
     try { await loading; } finally {
@@ -136,7 +142,11 @@ export function makeLiveApi(dispatch: React.Dispatch<Action>, get: () => AppStat
     reset() { void reload(); },
     reload,
     async sendCode(email: string) { await be.sendCode(email); set((s) => ({ ...s, email })); },
-    async verifyCode(email: string, code: string) { await be.verifyCode(email, code); },
+    async verifyCode(email: string, code: string) {
+      const u = await be.verifyCode(email, code);
+      // Direkt weitermachen, nicht nur auf das Anmelde-Ereignis warten
+      if (u) await enterHook?.(u.id, u.email);
+    },
     async signOut() { await be.signOut(); dispatch({ type: "replace", state: { ...buildLiveState(), auth: "signedOut" } }); },
     async deleteAccount() {
       try { await be.deleteAccount(); dispatch({ type: "replace", state: { ...buildLiveState(), auth: "signedOut" } }); toast("Dein Konto und deine Daten wurden gelöscht."); }
@@ -158,7 +168,7 @@ export function makeLiveApi(dispatch: React.Dispatch<Action>, get: () => AppStat
 }
 
 /** Anmeldung prüfen, auf Anmeldewechsel und Echtzeit-Änderungen hören. */
-export function startLive(api: Api, dispatch: React.Dispatch<Action>, get: () => AppState, toast: ToastFn): () => void {
+export function startLive(api: Api, dispatch: React.Dispatch<Action>, get: () => AppState, _toast: ToastFn): () => void {
   const set = (fn: (s: AppState) => AppState) => dispatch({ type: "set", fn });
   let unsub: (() => void) | null = null;
   let timer = 0;
@@ -166,7 +176,10 @@ export function startLive(api: Api, dispatch: React.Dispatch<Action>, get: () =>
   const listen = () => { unsub?.(); unsub = be.subscribe(() => { window.clearTimeout(timer); timer = window.setTimeout(() => void api.reload(), 400); }); };
   afterProfile = listen;
 
+  let entering: string | null = null;
   async function enter(uid: string, email?: string) {
+    if (entering === uid || (get().meId === uid && get().auth === "ready")) return;
+    entering = uid;
     try {
       const exists = await be.hasProfile(uid);
       set((s) => ({ ...s, meId: uid, email: email ?? s.email, auth: exists ? "loading" : "needsProfile" }));
@@ -174,14 +187,20 @@ export function startLive(api: Api, dispatch: React.Dispatch<Action>, get: () =>
       await api.reload();
       listen();
     } catch (e) {
-      toast(be.friendly((e as Error).message), "bad");
-      set((s) => ({ ...s, auth: "signedOut" }));
+      const msg = be.friendly((e as Error).message);
+      set((s) => ({ ...s, meId: uid, auth: "error", liveError: msg }));
+    } finally {
+      entering = null;
     }
   }
+  enterHook = enter;
 
-  void be.currentUser().then((u) => (u ? enter(u.id, u.email) : set((s) => ({ ...s, auth: "signedOut" }))));
+  void be.currentUser()
+    .then((u) => (u ? enter(u.id, u.email) : set((s) => ({ ...s, auth: "signedOut" }))))
+    .catch((e) => set((s) => ({ ...s, auth: "error", liveError: be.friendly((e as Error).message) })));
   const { data } = be.sb().auth.onAuthStateChange((event, session) => {
-    if (event === "SIGNED_IN" && session && session.user.id !== get().meId) void enter(session.user.id, session.user.email);
+    // Laut Supabase keine weiteren Aufrufe direkt im Ereignis: kurz entkoppeln
+    if (event === "SIGNED_IN" && session && session.user.id !== get().meId) { const u = session.user; window.setTimeout(() => void enter(u.id, u.email), 0); }
     if (event === "SIGNED_OUT") { unsub?.(); unsub = null; }
   });
   const onFocus = () => { if (get().auth === "ready") void api.reload(); };
