@@ -129,6 +129,8 @@ export interface AppState {
   auth: AuthStatus;
   email?: string;
   leagueBoard?: { local: LeagueRow[]; friends: LeagueRow[] };
+  /** Live-Modus: eigene Rolle und Sperrstatus */
+  myStatus?: { isAdmin: boolean; suspended: boolean; reason?: string };
   onboarded: boolean;
   meId: string;
   locationCity: string;      // Name (oder Kürzel aus CITIES) der gewählten Stadt

@@ -19,6 +19,7 @@ import { APP } from "./config/app";
 import { setLocale } from "./lib/format";
 import { LIVE } from "./config/backend";
 import { LegalScreen } from "./screens/Legal";
+import { Moderation } from "./screens/Moderation";
 import { PublicActivityScreen } from "./screens/PublicActivity";
 
 /** Geteilter Link: …/#a-<id> */
@@ -95,6 +96,7 @@ function Shell() {
       case "settings": return <Settings />;
       case "notifications": return <Notifications />;
       case "info": return <InfoScreen />;
+      case "moderation": return <Moderation />;
       case "legal": return <LegalScreen doc={current.doc} />;
     }
   })();

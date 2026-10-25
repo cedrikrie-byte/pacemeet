@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, FileText, Globe, Info, LogOut, Monitor, Moon, RotateCcw, Sun, Trash2 } from "lucide-react";
+import { Download, FileText, Globe, Info, LogOut, ShieldCheck, Monitor, Moon, RotateCcw, Sun, Trash2 } from "lucide-react";
 import { LIVE } from "../config/backend";
 import { PushSetting } from "../components/PushSetting";
 import { useApp } from "../store/AppStore";
@@ -36,6 +36,7 @@ export function Settings() {
         {LIVE && (
           <Group title="Konto">
             <p className="py-3 text-[14px]"><span className="text-muted">Angemeldet als </span><b>{state.email ?? "–"}</b></p>
+            {state.myStatus?.isAdmin && <button onClick={() => nav.push({ name: "moderation" })} className="flex w-full items-center gap-2 py-3 text-left text-[14.5px] font-medium"><ShieldCheck size={16} className="text-muted" /> Moderation (Meldungen prüfen)</button>}
             <button onClick={() => api.signOut()} className="flex w-full items-center gap-2 py-3 text-left text-[14.5px] font-medium"><LogOut size={16} className="text-muted" /> Abmelden</button>
           </Group>
         )}

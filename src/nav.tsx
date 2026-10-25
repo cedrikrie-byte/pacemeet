@@ -10,6 +10,7 @@ export type Screen =
   | { name: "settings" }
   | { name: "notifications" }
   | { name: "info" }
+  | { name: "moderation" }
   | { name: "legal"; doc: LegalDoc };
 
 export type LegalDoc = "impressum" | "datenschutz" | "nutzung";

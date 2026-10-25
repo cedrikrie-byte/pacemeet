@@ -200,6 +200,42 @@ ok((await fails(U.D, "insert into push_subscriptions (user_id, endpoint, p256dh,
 ok((await fails(U.C, "select * from app_secrets")) !== null || (await as(U.C, "select * from app_secrets")).rows.length === 0, "Geheime Server-Einstellungen sind gesperrt");
 ok((await fails(U.C, "update notifications set pushed_at = now()")) !== null, "Versandstatus von Benachrichtigungen ist nicht änderbar");
 
+// Moderation
+await db.exec("reset role");
+await db.query("delete from blocks");
+await db.query("insert into admins (user_id) values ($1)", [U.A]);
+await as(U.C, "insert into reports (reported_id, reason) values ($1, 'Spam im Chat')", [U.D]);
+ok((await fails(U.C, "select * from admin_reports('open')"))?.includes("Nur für Admins"), "Meldungen sehen nur Admins");
+ok((await fails(U.C, "select * from admins")) !== null || (await as(U.C, "select * from admins")).rows.length === 0, "Admin-Liste ist nicht lesbar");
+const rep = (await as(U.A, "select * from admin_reports('open')")).rows;
+ok(rep.some((r) => r.reported_name === "Nutzer D" && r.reporter_name === "Nutzer C" && r.reason === "Spam im Chat"), "Admin sieht Meldung mit Namen und Grund");
+ok((await as(U.A, "select is_admin from my_status()")).rows[0].is_admin === true && (await as(U.C, "select is_admin from my_status()")).rows[0].is_admin === false, "Admin-Status abfragbar");
+ok((await fails(U.D, "update profiles set suspended_at = null where id = $1", [U.D])) !== null, "Nutzer können ihre Sperre nicht selbst ändern");
+// D hat eine kommende Aktivität mit Teilnehmer E
+await db.exec("reset role");
+const dAct = (await db.query(`insert into activities (host_id, title, sport, city, meeting_point, lat, lng, starts_at, distance_km, tempo, max_participants, participant_count)
+  values ($1, 'Ds Runde', 'run', 'essen', 'Grugapark', 51.43, 7.0, now() + interval '1 day', 5, 400, 6, 1) returning id`, [U.D])).rows[0].id;
+await db.query("insert into activity_participants (activity_id, user_id) values ($1, $2)", [dAct, U.E]);
+ok((await fails(U.C, "select admin_suspend($1, 'Test')", [U.D]))?.includes("Nur für Admins"), "Nur Admins können sperren");
+ok((await fails(U.A, "select admin_suspend($1, 'Test')", [U.A]))?.includes("selbst"), "Admin kann sich nicht selbst sperren");
+await as(U.A, "select admin_suspend($1, 'Spam')", [U.D]);
+ok((await as(U.E, "select status from activities where id=$1", [dAct])).rows.length === 0, "Aktivitäten gesperrter Nutzer sind für andere unsichtbar");
+await db.exec("reset role");
+ok((await db.query("select status from activities where id=$1", [dAct])).rows[0].status === "cancelled", "Kommende Aktivitäten gesperrter Nutzer werden abgesagt");
+ok((await db.query("select count(*)::int c from notifications where user_id=$1 and activity_id=$2 and kind='cancel'", [U.E, dAct])).rows[0].c === 1, "Teilnehmende werden über die Absage informiert");
+ok((await as(U.C, "select id from profiles where id=$1", [U.D])).rows.length === 0, "Profil gesperrter Nutzer ist unsichtbar");
+ok((await as(U.D, "select suspended, suspended_reason from my_status()")).rows[0].suspended === true, "Gesperrte Person sieht ihren Status");
+ok((await fails(U.D, `insert into activities (title, sport, city, meeting_point, lat, lng, starts_at, distance_km, tempo, max_participants)
+  values ('Neu', 'run', 'essen', 'Grugapark', 51.43, 7.0, now() + interval '2 days', 5, 400, 6)`))?.includes("gesperrt"), "Gesperrte können keine Aktivität anlegen");
+const openAct = (await as(U.A, `insert into activities (title, sport, city, meeting_point, lat, lng, starts_at, distance_km, tempo, max_participants)
+  values ('Offen für alle', 'run', 'essen', 'Grugapark', 51.43, 7.0, now() + interval '2 days', 5, 400, 6) returning id`)).rows[0].id;
+ok((await fails(U.D, "select join_activity($1)", [openAct]))?.includes("gesperrt"), "Gesperrte können nicht beitreten");
+ok((await as(U.A, "select status from admin_reports('done')")).rows.some((r) => r.status === "actioned"), "Offene Meldungen werden beim Sperren erledigt");
+await as(U.A, "select admin_unsuspend($1)", [U.D]);
+ok((await fails(U.D, "select join_activity($1)", [openAct])) === null, "Nach dem Entsperren ist Teilnahme wieder möglich");
+await as(U.A, "select admin_set_report_status(id, 'dismissed') from admin_reports('all')");
+ok((await as(U.A, "select count(*)::int c from admin_reports('open')")).rows[0].c === 0, "Meldungen können als erledigt markiert werden");
+
 // Konto löschen
 await as(U.B, "select delete_my_account()");
 await db.exec("reset role");

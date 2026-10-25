@@ -112,7 +112,7 @@ const settingsToStore = (s: Settings) => ({ theme: s.theme, units: s.units, lang
 
 // --- Laden ----------------------------------------------------------------------
 
-export type Snapshot = Pick<AppState, "users" | "activities" | "events" | "notifications" | "blocked" | "league" | "settings" | "locationPos"> & { meId: string; locationCity: string; profileVisibility: Settings["profileVisibility"] };
+export type Snapshot = Pick<AppState, "users" | "activities" | "events" | "notifications" | "blocked" | "league" | "settings" | "locationPos" | "myStatus"> & { meId: string; locationCity: string; profileVisibility: Settings["profileVisibility"] };
 
 export async function loadSnapshot(uid: string, cityId: string | null, cityPos: [number, number] | null, radiusKm: number, base: Settings): Promise<Snapshot> {
   const db = sb();
@@ -127,13 +127,14 @@ export async function loadSnapshot(uid: string, cityId: string | null, cityPos: 
   const center: [number, number] = cityPos ?? ((!cityId || cityId === me!.city) && me!.city_lat != null && me!.city_lng != null ? [me!.city_lat, me!.city_lng] : null) ?? (known ? [known.lat, known.lng] : [CITIES[0].lat, CITIES[0].lng]);
   const city = { id: cityName, lat: center[0], lng: center[1] };
 
-  const [near, mine, notifs, blocks, events, rel] = await Promise.all([
+  const [near, mine, notifs, blocks, events, rel, status] = await Promise.all([
     db.rpc("activities_near", { p_lat: city.lat, p_lng: city.lng, p_radius_km: radiusKm }),
     db.rpc("my_activities"),
     db.from("notifications").select("*").order("created_at", { ascending: false }).limit(60),
     db.from("blocks").select("blocked_id"),
     db.from("events").select("*"),
     db.rpc("reliability", { p_user: uid }),
+    db.rpc("my_status"),
   ]);
   [near, mine, notifs, blocks, events].forEach((r) => fail(r.error));
 
@@ -174,6 +175,7 @@ export async function loadSnapshot(uid: string, cityId: string | null, cityPos: 
     league: { optIn: me!.league_opt_in, visibility: me!.league_visibility },
     settings: { ...base, ...(priv?.settings ?? {}), profileVisibility: me!.profile_visibility, notify: { ...base.notify, ...(priv?.settings?.notify ?? {}) } },
     profileVisibility: me!.profile_visibility,
+    myStatus: (() => { const r = (status.data as { is_admin: boolean; suspended: boolean; suspended_reason: string | null }[] | null)?.[0]; return r ? { isAdmin: r.is_admin, suspended: r.suspended, reason: r.suspended_reason ?? undefined } : undefined; })(),
   };
 }
 
@@ -349,3 +351,24 @@ export function subscribe(onChange: (table: string) => void): () => void {
   ch.subscribe();
   return () => { sb().removeChannel(ch); };
 }
+
+// --- Moderation (nur Admins; der Server prüft das selbst) -----------------------
+
+export interface AdminReport {
+  id: string; createdAt: string; reason: string; status: "open" | "reviewed" | "actioned" | "dismissed";
+  reporterName: string | null; reportedId: string | null; reportedName: string | null; reportedSuspended: boolean;
+  reportsAgainst: number; activityId: string | null; activityTitle: string | null;
+}
+export async function adminReports(status: "open" | "done" | "all"): Promise<AdminReport[]> {
+  const { data, error } = await sb().rpc("admin_reports", { p_status: status });
+  fail(error);
+  return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+    id: r.id as string, createdAt: r.created_at as string, reason: r.reason as string, status: r.status as AdminReport["status"],
+    reporterName: r.reporter_name as string | null, reportedId: r.reported_id as string | null, reportedName: r.reported_name as string | null,
+    reportedSuspended: !!r.reported_suspended, reportsAgainst: (r.reports_against as number) ?? 0,
+    activityId: r.activity_id as string | null, activityTitle: r.activity_title as string | null,
+  }));
+}
+export async function adminSetReportStatus(id: string, status: AdminReport["status"]) { fail((await sb().rpc("admin_set_report_status", { p_report: id, p_status: status })).error); }
+export async function adminSuspend(userId: string, reason: string) { fail((await sb().rpc("admin_suspend", { p_user: userId, p_reason: reason })).error); }
+export async function adminUnsuspend(userId: string) { fail((await sb().rpc("admin_unsuspend", { p_user: userId })).error); }

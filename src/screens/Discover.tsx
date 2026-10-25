@@ -129,6 +129,11 @@ export function Discover() {
       </header>
 
       <div className="flex flex-col gap-6 px-4 pb-8 pt-4">
+        {state.myStatus?.suspended && (
+          <div className="rounded-2xl border border-bad/30 bg-bad/10 p-3.5 text-[13.5px] text-bad">
+            <b>Dein Konto ist gesperrt.</b> Du kannst Aktivitäten ansehen, aber nichts anlegen, beitreten oder schreiben.{state.myStatus.reason ? ` Grund: ${state.myStatus.reason}` : ""} Wenn du glaubst, dass das ein Fehler ist, schreib uns über das Impressum.
+          </div>
+        )}
         {pending.length > 0 && (
           <button onClick={() => nav.push({ name: "activity", id: pending[0].id })} className="flex items-center gap-3 rounded-2xl border border-good/30 bg-good/10 p-3.5 text-left">
             <CheckCircle2 size={22} className="shrink-0 text-good" />
