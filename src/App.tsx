@@ -22,6 +22,7 @@ import { LegalScreen } from "./screens/Legal";
 import { Moderation } from "./screens/Moderation";
 import { PublicActivityScreen } from "./screens/PublicActivity";
 import { GroupDetail } from "./screens/GroupDetail";
+import { PublicGroupScreen } from "./screens/PublicGroup";
 import { GroupEdit } from "./screens/GroupEdit";
 
 /** Geteilter Link: …/#a-<id> (Aktivität) oder …/#g-<id> (Gruppe) */
@@ -83,6 +84,8 @@ function Shell() {
   }, [ready, shareId]); // eslint-disable-line react-hooks/exhaustive-deps
   // Einladungslink zu einer Gruppe: nach dem Laden öffnen
   const [groupShare, setGroupShare] = useState<string | null>(readGroupShare);
+  const autoJoin = useRef(false);
+  const stateRef = useRef(state); stateRef.current = state;
   useEffect(() => {
     const h = () => setGroupShare(readGroupShare());
     window.addEventListener("hashchange", h);
@@ -90,8 +93,14 @@ function Shell() {
   }, []);
   useEffect(() => {
     if (!ready || !groupShare) return;
-    nav.push({ name: "group", id: groupShare });
+    const gid = groupShare;
+    nav.push({ name: "group", id: gid });
     setGroupShare(null); clearHash();
+    // „Anmelden und beitreten“ aus der Vorschau: direkt beitreten bzw. Anfrage senden
+    if (autoJoin.current) {
+      autoJoin.current = false;
+      void api.ensureGroup(gid).then((found) => { if (found && !stateRef.current.groups.find((g) => g.id === gid)?.myStatus) void api.joinGroup(gid); });
+    }
   }, [ready, groupShare]); // eslint-disable-line react-hooks/exhaustive-deps
   const isTab = TABS.includes(current.name as Tab);
   const activeTab = isTab ? (current.name as Tab) : null;
@@ -103,7 +112,7 @@ function Shell() {
       case "mine": return <MyActivities />;
       case "league": return <League />;
       case "profile": return <Profile />;
-      case "create": return <CreateActivity key={current.editId ?? "new" + (current.groupId ?? "")} editId={current.editId} groupId={current.groupId} />;
+      case "create": return <CreateActivity key={(current.editId ?? "new" + (current.groupId ?? "")) + (current.series ? "-serie" : "")} editId={current.editId} groupId={current.groupId} series={current.series} />;
       case "group": return <GroupDetail key={current.id} id={current.id} />;
       case "groupEdit": return <GroupEdit key={current.id ?? "new"} id={current.id} />;
       case "activity": return <ActivityDetail key={current.id} id={current.id} />;
@@ -128,7 +137,7 @@ function Shell() {
           <div className="mt-6 rounded-2xl border border-line bg-surface p-5"><PrototypeInfo compact /></div>
         </aside>
 
-        <div className="relative flex h-full w-full max-w-[440px] flex-col overflow-hidden bg-bg lg:rounded-[32px] lg:border lg:border-line lg:shadow-[0_30px_80px_-40px_rgb(0_0_0/.45)]">
+        <div id="app-frame" className="relative flex h-full w-full max-w-[440px] flex-col overflow-hidden bg-bg lg:rounded-[32px] lg:border lg:border-line lg:shadow-[0_30px_80px_-40px_rgb(0_0_0/.45)]">
           <NavCtx.Provider value={nav}>
             <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
               {LIVE && state.auth === "loading" ? <Splash />
@@ -136,6 +145,8 @@ function Shell() {
                 : !ready ? (current.name === "legal" ? screen
                   : LIVE && shareId && !wantsLogin && state.auth === "signedOut"
                     ? <PublicActivityScreen id={shareId} onJoin={() => setWantsLogin(true)} onDismiss={() => { setShareId(null); clearHash(); }} />
+                    : LIVE && groupShare && !wantsLogin && state.auth === "signedOut"
+                    ? <PublicGroupScreen id={groupShare} onJoin={() => { autoJoin.current = true; setWantsLogin(true); }} onDismiss={() => { setGroupShare(null); clearHash(); }} />
                     : <Onboarding />)
                 : screen}
             </div>

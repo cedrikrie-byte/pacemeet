@@ -337,6 +337,52 @@ await as(U.C, "delete from groups where id=$1", [grp]);
 await db.exec("reset role");
 ok((await db.query("select status from activities where id=$1", [gAct])).rows[0].status === "cancelled", "Gruppe löschen sagt kommende Mitglieder-Termine ab");
 
+// Serie bearbeiten
+{
+  await db.exec("reset role");
+  const tpl2 = JSON.stringify({ title: "Mittwochslauf", sport: "run", city: "essen", meeting_point: "Grugapark", lat: 51.43, lng: 7.0, distance_km: 8, tempo: 360, max_participants: 10, route: { mode: "spontaneous", points: [] } });
+  const today2 = (await db.query("select (now() at time zone 'Europe/Berlin')::date::text d")).rows[0].d;
+  const f2 = (await as(U.C, "select create_series($1::jsonb, '{3}', 1, '18:00', $2::date) id", [tpl2, today2])).rows[0].id;
+  await db.exec("reset role");
+  const sid2 = (await db.query("select series_id from activities where id=$1", [f2])).rows[0].series_id;
+  const before = (await db.query("select count(*)::int c from activities where series_id=$1 and status='open'", [sid2])).rows[0].c;
+  await as(U.E, "select join_activity($1)", [f2]);
+  ok((await as(U.E, "select weekdays, start_date::text sd, is_host from series_info($1)", [sid2])).rows[0]?.is_host === false, "Serien-Infos zeigen, ob man Gastgeber ist");
+  ok((await fails(U.E, "select update_series($1, $2::jsonb, '{3}', 1, '19:00')", [sid2, tpl2])) !== null, "Nur der Gastgeber kann die Serie bearbeiten");
+  // Uhrzeit, Treffpunkt und Tempo ändern
+  const tpl3 = tpl2.replace("Grugapark", "Baldeneysee").replace('"tempo":360', '"tempo":390');
+  const n2 = (await as(U.C, "select update_series($1, $2::jsonb, '{3}', 1, '19:30') id", [sid2, tpl3])).rows[0].id;
+  await db.exec("reset role");
+  const rows2 = (await db.query("select id, meeting_point, tempo::int t, to_char(starts_at at time zone 'Europe/Berlin', 'HH24:MI') hm, status from activities where series_id=$1 and status='open' order by starts_at", [sid2])).rows;
+  ok(rows2.length === before && rows2.every((r) => r.hm === "19:30" && r.meeting_point === "Baldeneysee" && r.t === 390), "Serie bearbeiten ändert Uhrzeit, Treffpunkt und Tempo aller kommenden Termine");
+  ok(n2 === f2 && (await db.query("select count(*)::int c from activity_participants where activity_id=$1 and user_id=$2", [f2, U.E])).rows[0].c === 1, "Teilnehmende bleiben bei Änderungen angemeldet");
+  ok((await db.query("select count(*)::int c from notifications where user_id=$1 and kind='change' and activity_id=$2", [U.E, f2])).rows[0].c === 1, "Teilnehmende werden über die Änderung informiert");
+  // Wochentag wechseln: Mittwoch -> Montag und Freitag
+  await as(U.C, "select update_series($1, $2::jsonb, '{1,5}', 1, '19:30')", [sid2, tpl3]);
+  await db.exec("reset role");
+  const rows3 = (await db.query("select extract(isodow from starts_at at time zone 'Europe/Berlin')::int dow from activities where series_id=$1 and status='open' and starts_at > now()", [sid2])).rows;
+  ok(rows3.length >= 10 && rows3.every((r) => r.dow === 1 || r.dow === 5), "Wochentage ändern: alte Termine abgesagt, neue angelegt (" + rows3.length + ")");
+  ok((await db.query("select status from activities where id=$1", [f2])).rows[0].status === "cancelled", "Termin am alten Wochentag wird abgesagt");
+  ok((await db.query("select count(*)::int c from notifications where user_id=$1 and kind='cancel' and activity_id=$2", [U.E, f2])).rows[0].c === 1, "Teilnehmende des abgesagten Termins werden informiert");
+  ok((await db.query("select extend_all_series() n")).rows[0].n === 0, "Nach dem Bearbeiten keine doppelten Termine");
+  // Ende nach Anzahl setzen
+  await as(U.C, "select update_series($1, $2::jsonb, '{1,5}', 1, '19:30', null, 4)", [sid2, tpl3]);
+  await db.exec("reset role");
+  ok((await db.query("select count(*)::int c from activities where series_id=$1 and status='open'", [sid2])).rows[0].c >= 4, "Ende nach Anzahl behält die vorhandenen Termine");
+}
+// Öffentliche Gruppen-Vorschau
+{
+  const pg = (await as(U.E, "insert into groups (name, kind, city, listed) values ('Vorschau Club', 'club', 'essen', false) returning id")).rows[0].id;
+  await as(U.E, `insert into activities (title, sport, city, meeting_point, lat, lng, starts_at, distance_km, tempo, max_participants, group_id, visibility)
+    values ('Öffentlich', 'run', 'essen', 'Grugapark', 51.43, 7.0, now() + interval '2 days', 8, 360, 10, $1, 'public'),
+           ('Intern', 'run', 'essen', 'Grugapark', 51.43, 7.0, now() + interval '3 days', 8, 360, 10, $1, 'group')`, [pg]);
+  await db.exec("reset role"); await db.exec("set role anon");
+  const pub = (await db.query("select title from public_group_activities($1)", [pg])).rows;
+  const prev = (await db.query("select name from group_preview($1)", [pg])).rows;
+  await db.exec("reset role");
+  ok(prev[0]?.name === "Vorschau Club" && pub.length === 1 && pub[0].title === "Öffentlich", "Einladungslink ohne Konto: Gruppe und nur öffentliche Termine sichtbar");
+}
+
 // Konto löschen
 await as(U.B, "select delete_my_account()");
 await db.exec("reset role");

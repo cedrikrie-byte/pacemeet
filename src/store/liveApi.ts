@@ -101,6 +101,11 @@ export function makeLiveApi(dispatch: React.Dispatch<Action>, get: () => AppStat
     async createSeries(template: Activity, rule: SeriesRule) {
       return run(() => be.createSeries(template, rule), rule.maxCount || rule.untilDate ? "Serie veröffentlicht" : "Serie veröffentlicht. Neue Termine kommen automatisch dazu.");
     },
+    async updateSeries(seriesId: string, template: Partial<Activity>, rule: SeriesRule) {
+      const id = await run(() => be.updateSeries(seriesId, template, rule), "Serie gespeichert. Teilnehmende wurden informiert.");
+      if (id) set((s) => ({ ...s, activities: s.activities.map((a) => (a.seriesId === seriesId ? { ...a, seriesRule: { ...rule, active: true } } : a)) }));
+      return id;
+    },
     async seriesInfo(seriesId: string): Promise<SeriesRule | null> {
       try {
         const r = await be.seriesInfo(seriesId);

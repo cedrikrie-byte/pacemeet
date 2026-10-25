@@ -2,7 +2,7 @@ import { createContext, useContext } from "react";
 
 export type Screen =
   | { name: "discover" } | { name: "mine" } | { name: "league" } | { name: "profile" }
-  | { name: "create"; editId?: string; groupId?: string }
+  | { name: "create"; editId?: string; groupId?: string; series?: boolean }
   | { name: "group"; id: string }
   | { name: "groupEdit"; id?: string }
   | { name: "activity"; id: string }

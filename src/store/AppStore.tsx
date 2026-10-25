@@ -149,6 +149,29 @@ function makeDemoApi(dispatch: React.Dispatch<Action>, get: () => AppState, toas
       return list[0]?.id ?? null;
     },
     async seriesInfo(_seriesId: string): Promise<SeriesRule | null> { return null; },
+    /** Alle kommenden Termine einer Serie ändern (Demo: wie auf dem Server) */
+    async updateSeries(seriesId: string, template: Partial<Activity>, rule: SeriesRule): Promise<string | null> {
+      const s0 = get(); const t = Date.now();
+      const sample = s0.activities.find((a) => a.seriesId === seriesId);
+      if (!sample) return null;
+      const dates = seriesDates(rule, rule.maxCount || rule.untilDate ? 60 : 6);
+      const key = (d: Date) => d.toDateString();
+      const wanted = new Map(dates.map((d) => [key(d), d]));
+      const upcoming = s0.activities.filter((a) => a.seriesId === seriesId && a.status === "open" && new Date(a.startsAt).getTime() > t);
+      const kept = new Set<string>();
+      const changed = upcoming.map((a) => {
+        const d = wanted.get(new Date(a.startsAt).toDateString());
+        if (!d) return { ...a, status: "cancelled" as const, messages: [...a.messages, sysMsg("Die Aktivität wurde abgesagt")] };
+        kept.add(key(d));
+        return { ...a, ...template, id: a.id, startsAt: d.toISOString(), seriesRule: { ...rule, active: true }, maxParticipants: Math.max(template.maxParticipants ?? a.maxParticipants, a.participants.length + 1), messages: [...a.messages, sysMsg("Geändert: Serie aktualisiert")] };
+      });
+      const fresh: Activity[] = dates.filter((d) => !kept.has(key(d))).map((d) => ({ ...sample, ...template, id: uid(), seriesId, seriesRule: { ...rule, active: true }, startsAt: d.toISOString(), participants: [], selfConfirmed: [], hostConfirmed: [], messages: [], status: "open" }));
+      const byId = new Map(changed.map((a) => [a.id, a]));
+      set((s) => ({ ...s, activities: [...s.activities.map((a) => byId.get(a.id) ?? (a.seriesId === seriesId ? { ...a, seriesRule: { ...rule, active: true } } : a)), ...fresh] }));
+      toast("Serie gespeichert. Teilnehmende wurden informiert.", "good");
+      const next = [...changed.filter((a) => a.status === "open"), ...fresh].sort((a, b) => a.startsAt.localeCompare(b.startsAt))[0];
+      return next?.id ?? null;
+    },
 
     // --- Gruppen (Demo) ---
     async createGroup(g: Partial<Group>): Promise<string | null> {

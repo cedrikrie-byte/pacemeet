@@ -20,6 +20,7 @@ export function ActivityDetail({ id }: { id: string }) {
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmSeries, setConfirmSeries] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [editChoice, setEditChoice] = useState(false);
   const [present, setPresent] = useState<string[] | null>(null);
   const needRule = !!a?.seriesId && !a.seriesRule;
   useEffect(() => { if (needRule && a?.seriesId) void api.seriesInfo(a.seriesId); }, [needRule, a?.seriesId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -59,7 +60,7 @@ export function ActivityDetail({ id }: { id: string }) {
       <TopBar onBack={nav.back} title={a.title} sub={cityName(a.city)}
         right={<div className="flex items-center gap-1">
           {!cancelled && !ended && <IconButton label="Teilen" onClick={share}><Share2 size={19} /></IconButton>}
-          {mine && !cancelled && !ended && <Button size="sm" variant="secondary" onClick={() => nav.push({ name: "create", editId: a.id })}><Pencil size={14} /> Bearbeiten</Button>}
+          {mine && !cancelled && !ended && <Button size="sm" variant="secondary" onClick={() => (a.seriesId ? setEditChoice(true) : nav.push({ name: "create", editId: a.id }))}><Pencil size={14} /> Bearbeiten</Button>}
         </div>} />
 
       <div className="flex flex-col gap-6 px-4 pt-4">
@@ -190,7 +191,7 @@ export function ActivityDetail({ id }: { id: string }) {
       {!cancelled && !ended && (
         <div className="absolute inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3 backdrop-blur-md">
           {mine ? (
-            <div className="flex gap-2"><Button variant="secondary" onClick={() => nav.push({ name: "create", editId: a.id })}><Pencil size={16} /> Bearbeiten</Button><Button block onClick={() => nav.push({ name: "chat", id: a.id })}><MessageCircle size={17} /> Chat</Button></div>
+            <div className="flex gap-2"><Button variant="secondary" onClick={() => (a.seriesId ? setEditChoice(true) : nav.push({ name: "create", editId: a.id }))}><Pencil size={16} /> Bearbeiten</Button><Button block onClick={() => nav.push({ name: "chat", id: a.id })}><MessageCircle size={17} /> Chat</Button></div>
           ) : joined ? (
             <div className="flex gap-2"><Button variant="danger" onClick={() => setConfirmLeave(true)}>Absagen</Button><Button block onClick={() => nav.push({ name: "chat", id: a.id })}><MessageCircle size={17} /> Zum Gruppenchat</Button></div>
           ) : started ? (
@@ -207,6 +208,13 @@ export function ActivityDetail({ id }: { id: string }) {
         footer={<div className="flex gap-2"><Button variant="secondary" block onClick={() => setConfirmLeave(false)}>Doch dabei</Button><Button variant="danger" block onClick={() => { api.leave(a.id, late); setConfirmLeave(false); }}>Absagen</Button></div>}>
         <p className="text-[15px] leading-relaxed">Die Gruppe wird automatisch informiert, und dein Platz wird wieder frei.</p>
         {late && <p className={cx("mt-3 flex gap-2 rounded-xl bg-warn/12 p-3 text-[13.5px] text-warn")}><TriangleAlert size={17} className="shrink-0" /> Der Start ist in weniger als 2 Stunden. Kurzfristige Absagen werden in deinem Profil gezählt.</p>}
+      </Sheet>
+      <Sheet open={editChoice} onClose={() => setEditChoice(false)} title="Was möchtest du ändern?">
+        <div className="flex flex-col gap-2">
+          <Button block onClick={() => { setEditChoice(false); nav.push({ name: "create", editId: a.id, series: true }); }}><Repeat size={16} /> Ganze Serie</Button>
+          <p className="-mt-0.5 mb-1 text-center text-[12.5px] text-muted">{a.seriesRule ? `${seriesLabel(a.seriesRule)} · ` : ""}alle kommenden Termine</p>
+          <Button block variant="secondary" onClick={() => { setEditChoice(false); nav.push({ name: "create", editId: a.id }); }}>Nur diesen Termin ({fmtDateLong(a.startsAt)})</Button>
+        </div>
       </Sheet>
       <Sheet open={confirmSeries} onClose={() => setConfirmSeries(false)} title="Serie beenden?"
         footer={<div className="flex gap-2"><Button variant="secondary" block onClick={() => setConfirmSeries(false)}>Zurück</Button><Button variant="danger" block onClick={() => { api.cancelSeries(a.seriesId!); setConfirmSeries(false); }}>Alle absagen</Button></div>}>

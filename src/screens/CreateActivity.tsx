@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Minus, Plus } from "lucide-react";
 import { PaceInput } from "../components/PaceInput";
 import { useApp } from "../store/AppStore";
@@ -18,11 +18,13 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const toDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const toTime = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
-export function CreateActivity({ editId, groupId: presetGroup }: { editId?: string; groupId?: string }) {
+export function CreateActivity({ editId, groupId: presetGroup, series: editSeries }: { editId?: string; groupId?: string; series?: boolean }) {
   const { state, api, me } = useApp();
   const nav = useNav();
   const units = state.settings.units;
   const editing = editId ? state.activities.find((a) => a.id === editId) : undefined;
+  /** Ganze Serie bearbeiten (alle kommenden Termine) */
+  const seriesEdit = !!(editSeries && editing?.seriesId);
 
   const initStart = useMemo(() => {
     if (editing) return new Date(editing.startsAt);
@@ -63,7 +65,8 @@ export function CreateActivity({ editId, groupId: presetGroup }: { editId?: stri
   const activeEvents = state.events.filter((e) => new Date(e.end).getTime() + 86400000 > Date.now());
 
   const [saving, setSaving] = useState(false);
-  const [repeat, setRepeat] = useState(false);
+  const [repeatOn, setRepeat] = useState(false);
+  const repeat = seriesEdit || repeatOn;
   const [days, setDays] = useState<number[] | null>(null);   // null = Wochentag des Datums
   const [every, setEvery] = useState<1 | 2>(1);
   const [endMode, setEndMode] = useState<"none" | "count" | "until">("none");
@@ -72,6 +75,17 @@ export function CreateActivity({ editId, groupId: presetGroup }: { editId?: stri
   const postable = state.groups.filter((g) => canPost(g));
   const [groupId, setGroupId] = useState(editing?.groupId ?? (presetGroup && postable.some((g) => g.id === presetGroup) ? presetGroup : ""));
   const [membersOnly, setMembersOnly] = useState(editing?.visibility === "group");
+  // Serie bearbeiten: Rhythmus übernehmen (live ggf. erst nachladen)
+  const editRule = seriesEdit ? editing?.seriesRule : undefined;
+  useEffect(() => { if (seriesEdit && !editRule && editing?.seriesId) void api.seriesInfo(editing.seriesId); }, [seriesEdit, !!editRule]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [ruleLoaded, setRuleLoaded] = useState(false);
+  useEffect(() => {
+    if (!editRule || ruleLoaded) return;
+    setDays([...editRule.weekdays].sort()); setEvery(editRule.intervalWeeks); setTime(editRule.time);
+    if (editRule.maxCount) { setEndMode("count"); setCount(editRule.maxCount); } else if (editRule.untilDate) { setEndMode("until"); setUntil(editRule.untilDate); } else setEndMode("none");
+    if (editRule.startDate) setDate(editRule.startDate);
+    setRuleLoaded(true);
+  }, [editRule, ruleLoaded]);
   const dateDow = (() => { const d = new Date(`${date}T12:00`); return isNaN(d.getTime()) ? 1 : isoDow(d); })();
   const weekdays = days ?? [dateDow];
   const rule: SeriesRule = { weekdays, intervalWeeks: every, time, startDate: date, ...(endMode === "count" ? { maxCount: count } : endMode === "until" ? { untilDate: until } : {}) };
@@ -82,15 +96,16 @@ export function CreateActivity({ editId, groupId: presetGroup }: { editId?: stri
     const start = new Date(`${date}T${time}`);
     if (title.trim().length < 3) err.title = "Gib einen Titel mit mindestens 3 Zeichen ein.";
     if (isNaN(start.getTime())) err.when = "Wähle Datum und Uhrzeit.";
-    else if (!repeat && start.getTime() < Date.now() + 10 * 60000) err.when = "Der Start muss mindestens 10 Minuten in der Zukunft liegen.";
+    else if (!repeat && !seriesEdit && start.getTime() < Date.now() + 10 * 60000) err.when = "Der Start muss mindestens 10 Minuten in der Zukunft liegen.";
     if (meet.label.trim().length < 3) err.meeting = "Gib einen öffentlichen Treffpunkt an.";
     else if (needsPublicConfirm(meet) && !meet.publicOk) err.meeting = "Das sieht nach einer Wohnadresse aus. Wähle einen öffentlichen Ort oder bestätige unten, dass er öffentlich ist.";
     if (!(distKm > 0 && distKm <= 300)) err.dist = "Gib eine Distanz zwischen 0,1 und 300 an.";
     if (sport === "run" && !(tempo >= 150 && tempo <= 900)) err.tempo = "Tippe die Pace als Ziffern, z. B. 730 für 7:30 (Sekunden bis 59).";
     if (sport === "ride" && !(tempo >= 8 && tempo <= 50)) err.tempo = "Tempo zwischen 8 und 50 km/h.";
-    if (editing && max < editing.participants.length + 1) err.max = `Es sind schon ${editing.participants.length + 1} Personen dabei.`;
-    if (repeat && !editing) {
-      if (endMode === "until" && until < date) err.when = "Das Ende der Serie liegt vor dem ersten Termin.";
+    if (editing && !seriesEdit && max < editing.participants.length + 1) err.max = `Es sind schon ${editing.participants.length + 1} Personen dabei.`;
+    if (seriesEdit && !ruleLoaded) err.when = "Die Serie wird noch geladen. Versuch es gleich noch einmal.";
+    else if (repeat && (!editing || seriesEdit)) {
+      if (endMode === "until" && until < (seriesEdit ? toDate(new Date()) : date)) err.when = "Das Ende der Serie liegt vor dem ersten Termin.";
       else if (preview.length === 0) err.when = "Mit diesen Einstellungen entsteht kein Termin. Prüfe Wochentage und Ende.";
     }
     if (route.mode === "planned" && route.points.length < 2) err.route = "Lass dir eine Strecke vorschlagen, zeichne sie selbst oder wähle „Spontan“.";
@@ -109,7 +124,12 @@ export function CreateActivity({ editId, groupId: presetGroup }: { editId?: stri
       groupId: groupId || undefined,
       visibility: groupId && membersOnly ? "group" as const : "public" as const,
     };
-    if (editing) {
+    if (seriesEdit && editing?.seriesId) {
+      setSaving(true);
+      const id = await api.updateSeries(editing.seriesId, base, rule);
+      setSaving(false);
+      if (id) nav.replace({ name: "activity", id });
+    } else if (editing) {
       const changes: string[] = [];
       if (editing.startsAt !== base.startsAt) changes.push("Startzeit");
       if (editing.meetingPoint !== base.meetingPoint) changes.push("Treffpunkt");
@@ -140,8 +160,10 @@ export function CreateActivity({ editId, groupId: presetGroup }: { editId?: stri
 
   return (
     <form onSubmit={submit} noValidate className="screen-in pb-28">
-      <TopBar onBack={nav.back} title={editing ? "Aktivität bearbeiten" : "Neue Aktivität"} />
+      <TopBar onBack={nav.back} title={seriesEdit ? "Serie bearbeiten" : editing ? (editing.seriesId ? "Termin bearbeiten" : "Aktivität bearbeiten") : "Neue Aktivität"} />
       <div className="flex flex-col gap-7 px-4 pt-4">
+        {seriesEdit && <p className="rounded-2xl bg-accent/10 p-3.5 text-[13.5px] leading-relaxed"><b>Gilt für alle kommenden Termine.</b> Angemeldete bleiben dabei und werden informiert. Termine an Tagen, die wegfallen, werden abgesagt.</p>}
+        {editing?.seriesId && !seriesEdit && <p className="rounded-2xl bg-raised p-3.5 text-[13.5px] leading-relaxed">Du änderst nur diesen einen Termin der Serie.</p>}
         <Field label="Sportart" hint={`Bald auch: ${PLANNED_SPORTS.join(", ")}`}>
           <Segmented label="Sportart" value={sport} onChange={(v) => { setSport(v); setDist(String(SPORTS[v].defaultDistance)); if (route.points.length) setRoute({ ...route, points: [], ascentM: undefined }); }}
             options={[{ value: "run", label: <><SportIcon sport="run" /> Laufen</> }, { value: "ride", label: <><SportIcon sport="ride" /> Radfahren</> }]} />
@@ -153,15 +175,15 @@ export function CreateActivity({ editId, groupId: presetGroup }: { editId?: stri
 
         <div id="f-when" className="flex flex-col gap-2">
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Datum" htmlFor="date"><input id="date" type="date" className={inputCls} value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+            {!seriesEdit && <Field label={repeat ? "Erster Termin ab" : "Datum"} htmlFor="date"><input id="date" type="date" className={inputCls} value={date} onChange={(e) => setDate(e.target.value)} /></Field>}
             <Field label="Uhrzeit" htmlFor="time"><input id="time" type="time" className={inputCls} value={time} onChange={(e) => setTime(e.target.value)} step={300} /></Field>
           </div>
-          <div className="flex gap-2">
+          {!seriesEdit && <div className="flex gap-2">
             {[["Heute", 0], ["Morgen", 1], ["Übermorgen", 2]].map(([l, o]) => {
               const d = new Date(); d.setDate(d.getDate() + (o as number));
               return <button type="button" key={l} onClick={() => setDate(toDate(d))} className={cx("rounded-full border px-3 py-1 text-[12.5px] font-semibold", date === toDate(d) ? "border-ink" : "border-line text-muted")}>{l}</button>;
             })}
-          </div>
+          </div>}
           {errors.when && <p className="text-[12.5px] font-medium text-bad">{errors.when}</p>}
         </div>
 
@@ -211,7 +233,7 @@ export function CreateActivity({ editId, groupId: presetGroup }: { editId?: stri
             <Toggle id="repeat" checked={repeat} onChange={setRepeat} label="Als Serie wiederholen"
               desc={repeat ? seriesLabel(rule) : "Für einen festen Lauftreff, z. B. jeden Montag um 9 Uhr."} />
           )}
-          {!editing && repeat && (
+          {(!editing || seriesEdit) && repeat && (
             <div className="flex flex-col gap-4 py-3">
               <div>
                 <p className="mb-2 text-[14px] font-medium">An welchen Tagen?</p>
@@ -279,7 +301,7 @@ export function CreateActivity({ editId, groupId: presetGroup }: { editId?: stri
       </div>
 
       <div className="absolute inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3 backdrop-blur-md">
-        <Button type="submit" block size="lg" disabled={saving}>{saving ? "Wird gespeichert …" : editing ? "Änderungen speichern" : repeat ? "Serie veröffentlichen" : "Aktivität veröffentlichen"}</Button>
+        <Button type="submit" block size="lg" disabled={saving}>{saving ? "Wird gespeichert …" : seriesEdit ? "Serie speichern" : editing ? "Änderungen speichern" : repeat ? "Serie veröffentlichen" : "Aktivität veröffentlichen"}</Button>
       </div>
     </form>
   );

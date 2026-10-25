@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { Bike, ChevronLeft, Footprints, X } from "lucide-react";
 import { useEffect, type ButtonHTMLAttributes, type ReactNode } from "react";
 import type { SportId, User } from "../types";
@@ -146,7 +147,9 @@ export function Sheet({ open, onClose, title, children, footer }: { open: boolea
     return () => window.removeEventListener("keydown", h);
   }, [open, onClose]);
   if (!open) return null;
-  return (
+  // Direkt im App-Rahmen anzeigen, damit der Dialog immer im sichtbaren Bereich liegt
+  const host = typeof document !== "undefined" ? document.getElementById("app-frame") : null;
+  const node = (
     <div className="absolute inset-0 z-50 flex items-end" role="dialog" aria-modal aria-label={title}>
       <button aria-label="Schließen" className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
       <div className="sheet-in relative flex max-h-[88%] w-full flex-col rounded-t-[26px] bg-surface shadow-2xl">
@@ -159,6 +162,7 @@ export function Sheet({ open, onClose, title, children, footer }: { open: boolea
       </div>
     </div>
   );
+  return host ? createPortal(node, host) : node;
 }
 
 export function Empty({ icon, title, text, action }: { icon: ReactNode; title: string; text: string; action?: ReactNode }) {

@@ -299,8 +299,19 @@ export async function createSeries(template: Activity, rule: SeriesRule): Promis
 export async function seriesInfo(seriesId: string): Promise<SeriesRule | null> {
   const { data, error } = await sb().rpc("series_info", { p_series: seriesId });
   fail(error);
-  const r = (data as { weekdays: number[]; interval_weeks: 1 | 2; local_time: string; until_date: string | null; max_count: number | null; active: boolean }[] | null)?.[0];
-  return r ? { weekdays: r.weekdays, intervalWeeks: r.interval_weeks, time: r.local_time.slice(0, 5), startDate: "", untilDate: r.until_date ?? undefined, maxCount: r.max_count ?? undefined, active: r.active } : null;
+  const r = (data as { weekdays: number[]; interval_weeks: 1 | 2; local_time: string; start_date: string | null; until_date: string | null; max_count: number | null; active: boolean }[] | null)?.[0];
+  return r ? { weekdays: r.weekdays, intervalWeeks: r.interval_weeks, time: r.local_time.slice(0, 5), startDate: r.start_date ?? "", untilDate: r.until_date ?? undefined, maxCount: r.max_count ?? undefined, active: r.active } : null;
+}
+/** Alle kommenden Termine einer Serie ändern. Gibt die ID des nächsten Termins zurück. */
+export async function updateSeries(seriesId: string, template: Partial<Activity>, rule: SeriesRule): Promise<string> {
+  const t = toInsert(template);
+  delete (t as { starts_at?: string }).starts_at;
+  const { data, error } = await sb().rpc("update_series", {
+    p_series: seriesId, p_template: t, p_weekdays: rule.weekdays, p_interval_weeks: rule.intervalWeeks, p_local_time: rule.time,
+    p_until_date: rule.untilDate ?? null, p_max_count: rule.maxCount ?? null,
+  });
+  fail(error);
+  return data as string;
 }
 
 // --- Gruppen --------------------------------------------------------------------
@@ -341,6 +352,13 @@ export async function groupPreview(id: string): Promise<Group | null> {
   fail(error);
   const r = ((data as GroupRow[]) ?? [])[0];
   return r ? toGroup(r) : null;
+}
+export interface PublicGroupActivity { id: string; title: string; sport: SportId; meeting_point: string; starts_at: string; distance_km: number; tempo: number; series_id: string | null; }
+/** Öffentliche Termine einer Gruppe (für Einladungslinks ohne Konto). */
+export async function publicGroupActivities(id: string): Promise<PublicGroupActivity[]> {
+  const { data, error } = await sb().rpc("public_group_activities", { p_group: id });
+  fail(error);
+  return (data as PublicGroupActivity[]) ?? [];
 }
 export async function loadGroupMembers(id: string): Promise<GroupMember[]> {
   const { data, error } = await sb().rpc("group_member_list", { p_group: id });
