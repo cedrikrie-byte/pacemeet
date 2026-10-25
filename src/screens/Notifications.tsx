@@ -1,4 +1,4 @@
-import { Bell, CalendarClock, CheckCircle2, MessageCircle, UserPlus, XCircle, MapPin } from "lucide-react";
+import { Bell, CalendarClock, CheckCircle2, MessageCircle, UserPlus, XCircle, MapPin, Users } from "lucide-react";
 import { useApp } from "../store/AppStore";
 import { useNav } from "../nav";
 import { Button, DemoTag, Empty, TopBar, cx } from "../components/ui";
@@ -8,7 +8,7 @@ import { LIVE } from "../config/backend";
 
 const ICON: Record<NotifKind, React.ReactNode> = {
   change: <CalendarClock size={18} />, cancel: <XCircle size={18} />, join: <UserPlus size={18} />,
-  chat: <MessageCircle size={18} />, reminder: <CheckCircle2 size={18} />, system: <Bell size={18} />, nearby: <MapPin size={18} />,
+  chat: <MessageCircle size={18} />, reminder: <CheckCircle2 size={18} />, system: <Bell size={18} />, nearby: <MapPin size={18} />, group: <Users size={18} />,
 };
 
 export function Notifications() {

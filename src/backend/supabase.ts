@@ -1,7 +1,7 @@
 import { createClient, type RealtimeChannel, type SupabaseClient } from "@supabase/supabase-js";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "../config/backend";
 import { CITIES } from "../config/app";
-import type { Activity, AppEvent, AppState, LeagueRow, Message, Notif, Settings, SportId, User } from "../types";
+import type { Activity, AppEvent, AppState, Group, GroupMember, LeagueRow, Message, Notif, SeriesRule, Settings, SportId, User } from "../types";
 
 /**
  * Verbindung zu Supabase (Live-Modus).
@@ -56,6 +56,7 @@ interface ActivityRow {
   starts_at: string; distance_km: number; tempo: number; max_participants: number; description: string;
   beginner_friendly: boolean; breaks: boolean; route: Activity["route"] | null; event_id: string | null;
   status: "open" | "cancelled"; participant_count: number; updated_at: string; series_id: string | null;
+  group_id: string | null; visibility: "public" | "group" | null;
 }
 interface PartRow { activity_id: string; user_id: string; self_confirmed: boolean; host_confirmed: boolean; }
 interface MsgRow { id: string; activity_id: string; user_id: string | null; body: string; is_system: boolean; created_at: string; }
@@ -102,6 +103,7 @@ function toActivity(r: ActivityRow, parts: PartRow[], msgs: MsgRow[]): Activity 
     messages: msgs.filter((m) => m.activity_id === r.id).map((m): Message => ({ id: m.id, userId: m.user_id ?? "system", text: m.body, at: m.created_at, system: m.is_system })),
     route: r.route ?? { mode: "spontaneous", points: [] }, eventId: r.event_id ?? undefined, updatedAt: r.updated_at,
     seriesId: r.series_id ?? undefined,
+    groupId: r.group_id ?? undefined, visibility: r.visibility ?? "public",
   };
 }
 const toEvent = (e: EventRow): AppEvent => ({ id: e.id, name: e.name, start: e.starts_on, end: e.ends_on, required: e.required, medal: e.medal, hue: e.hue, description: e.description });
@@ -141,7 +143,7 @@ const settingsToStore = (s: Settings) => ({ theme: s.theme, units: s.units, lang
 
 // --- Laden ----------------------------------------------------------------------
 
-export type Snapshot = Pick<AppState, "users" | "activities" | "events" | "notifications" | "blocked" | "league" | "settings" | "locationPos" | "myStatus"> & { meId: string; locationCity: string; profileVisibility: Settings["profileVisibility"] };
+export type Snapshot = Pick<AppState, "users" | "activities" | "events" | "notifications" | "blocked" | "league" | "settings" | "locationPos" | "myStatus" | "groups"> & { meId: string; locationCity: string; profileVisibility: Settings["profileVisibility"] };
 
 export async function loadSnapshot(uid: string, cityId: string | null, cityPos: [number, number] | null, radiusKm: number, base: Settings): Promise<Snapshot> {
   const db = sb();
@@ -164,7 +166,7 @@ export async function loadSnapshot(uid: string, cityId: string | null, cityPos: 
     void db.from("profiles").update({ city_lat: homeKnown.lat, city_lng: homeKnown.lng }).eq("id", uid).then(() => undefined, () => undefined);
   }
 
-  const [near, mine, notifs, blocks, events, rel, status] = await Promise.all([
+  const [near, mine, notifs, blocks, events, rel, status, groups] = await Promise.all([
     db.rpc("activities_near", { p_lat: city.lat, p_lng: city.lng, p_radius_km: radiusKm }),
     db.rpc("my_activities"),
     db.from("notifications").select("*").order("created_at", { ascending: false }).limit(60),
@@ -172,11 +174,19 @@ export async function loadSnapshot(uid: string, cityId: string | null, cityPos: 
     db.from("events").select("*"),
     db.rpc("reliability", { p_user: uid }),
     db.rpc("my_status"),
+    loadGroups(uid, center),
   ]);
   [near, mine, notifs, blocks, events].forEach((r) => fail(r.error));
 
+  // Kommende Termine der eigenen Gruppen (auch außerhalb des Umkreises)
+  const myGroupIds = groups.filter((g) => g.myStatus === "active").map((g) => g.id);
+  const groupActs = myGroupIds.length
+    ? await db.from("activities").select("*").in("group_id", myGroupIds).eq("status", "open").gt("starts_at", new Date(Date.now() - 3 * 3600e3).toISOString()).order("starts_at").limit(200)
+    : { data: [], error: null };
+  fail(groupActs.error);
+
   const rows = new Map<string, ActivityRow>();
-  [...(near.data as ActivityRow[]), ...(mine.data as ActivityRow[])].forEach((r) => rows.set(r.id, r));
+  [...(near.data as ActivityRow[]), ...(groupActs.data as ActivityRow[]), ...(mine.data as ActivityRow[])].forEach((r) => rows.set(r.id, r));
   const memberIds = (mine.data as ActivityRow[]).map((r) => r.id);
 
   const [parts, msgs] = memberIds.length
@@ -212,8 +222,20 @@ export async function loadSnapshot(uid: string, cityId: string | null, cityPos: 
     league: { optIn: me!.league_opt_in, visibility: me!.league_visibility },
     settings: { ...base, ...(priv?.settings ?? {}), profileVisibility: me!.profile_visibility, notify: { ...base.notify, ...(priv?.settings?.notify ?? {}) }, alerts: { ...base.alerts, ...(priv?.settings?.alerts ?? {}) } },
     profileVisibility: me!.profile_visibility,
+    groups,
     myStatus: (() => { const r = (status.data as { is_admin: boolean; suspended: boolean; suspended_reason: string | null }[] | null)?.[0]; return r ? { isAdmin: r.is_admin, suspended: r.suspended, reason: r.suspended_reason ?? undefined } : undefined; })(),
   };
+}
+
+/** Termine einer Gruppe nachladen (mit Profilen der Gastgeber). */
+export async function loadGroupActivitiesFull(id: string): Promise<{ activities: Activity[]; users: Record<string, User> }> {
+  const rows = await loadGroupActivities(id);
+  const ids = [...new Set(rows.map((r) => r.host_id))];
+  const { data: profs } = ids.length ? await sb().from("profiles").select("*").in("id", ids) : { data: [] };
+  const users: Record<string, User> = {};
+  ids.forEach((u) => (users[u] = placeholder(u)));
+  ((profs as ProfileRow[]) ?? []).forEach((p) => (users[p.id] = toUser(p)));
+  return { activities: rows.map((r) => toActivity(r, [], [])), users };
 }
 
 /** Einzelne Aktivität nachladen (z. B. aus einem geteilten Link, außerhalb des Umkreises). */
@@ -256,17 +278,103 @@ const toRow = (a: Partial<Activity>) => ({
   beginner_friendly: a.beginnerFriendly, breaks: a.breaks, route: a.route ?? null, event_id: a.eventId ?? null,
 });
 
+const toInsert = (a: Partial<Activity>) => ({ ...toRow(a), group_id: a.groupId ?? null, visibility: a.groupId ? a.visibility ?? "public" : "public" });
+
 export async function createActivity(a: Activity): Promise<string> {
-  const { data, error } = await sb().from("activities").insert(toRow(a)).select("id").single();
+  const { data, error } = await sb().from("activities").insert(toInsert(a)).select("id").single();
   fail(error);
   return (data as { id: string }).id;
 }
-/** Mehrere Termine auf einmal (Serie). Gibt die ID des ersten Termins zurück. */
-export async function createActivities(list: Activity[]): Promise<string> {
-  const rows = list.map((a) => ({ ...toRow(a), series_id: a.seriesId ?? null }));
-  const { data, error } = await sb().from("activities").insert(rows).select("id,starts_at").order("starts_at");
+/** Serie anlegen: der Server erzeugt die Termine und verlängert laufende Serien. Gibt die ID des ersten Termins zurück. */
+export async function createSeries(template: Activity, rule: SeriesRule): Promise<string> {
+  const t = toInsert(template);
+  delete (t as { starts_at?: string }).starts_at;
+  const { data, error } = await sb().rpc("create_series", {
+    p_template: t, p_weekdays: rule.weekdays, p_interval_weeks: rule.intervalWeeks, p_local_time: rule.time,
+    p_start_date: rule.startDate, p_until_date: rule.untilDate ?? null, p_max_count: rule.maxCount ?? null,
+  });
   fail(error);
-  return (data as { id: string }[])[0].id;
+  return data as string;
+}
+export async function seriesInfo(seriesId: string): Promise<SeriesRule | null> {
+  const { data, error } = await sb().rpc("series_info", { p_series: seriesId });
+  fail(error);
+  const r = (data as { weekdays: number[]; interval_weeks: 1 | 2; local_time: string; until_date: string | null; max_count: number | null; active: boolean }[] | null)?.[0];
+  return r ? { weekdays: r.weekdays, intervalWeeks: r.interval_weeks, time: r.local_time.slice(0, 5), startDate: "", untilDate: r.until_date ?? undefined, maxCount: r.max_count ?? undefined, active: r.active } : null;
+}
+
+// --- Gruppen --------------------------------------------------------------------
+
+interface GroupRow {
+  id: string; owner_id?: string; name: string; kind: Group["kind"]; description: string; city: string; city_lat?: number | null; city_lng?: number | null;
+  sports: SportId[]; join_mode: Group["joinMode"]; listed?: boolean; post_mode?: Group["postMode"]; hue: number; website: string | null; member_count: number; owner_name?: string;
+}
+const toGroup = (r: GroupRow, mine?: { role: Group["myRole"]; status: Group["myStatus"] }): Group => ({
+  id: r.id, name: r.name, kind: r.kind, description: r.description, city: r.city,
+  cityPos: r.city_lat != null && r.city_lng != null ? [r.city_lat, r.city_lng] : undefined,
+  sports: r.sports, joinMode: r.join_mode, listed: r.listed ?? true, postMode: r.post_mode ?? "members", hue: r.hue,
+  website: r.website ?? undefined, memberCount: r.member_count, ownerId: r.owner_id, ownerName: r.owner_name,
+  myRole: mine?.role, myStatus: mine?.status,
+});
+const groupToRow = (g: Partial<Group>) => ({
+  name: g.name, kind: g.kind, description: g.description ?? "", city: g.city ?? "", city_lat: g.cityPos?.[0] ?? null, city_lng: g.cityPos?.[1] ?? null,
+  sports: g.sports, join_mode: g.joinMode, listed: g.listed, post_mode: g.postMode, hue: g.hue, website: g.website || null,
+});
+
+/** Eigene Gruppen (inkl. offener Anfragen) und gelistete Gruppen in der Nähe. */
+export async function loadGroups(uid: string, center: [number, number]): Promise<Group[]> {
+  const db = sb();
+  const [mine, near] = await Promise.all([
+    db.from("group_members").select("role,status,groups(*)").eq("user_id", uid),
+    db.rpc("groups_near", { p_lat: center[0], p_lng: center[1], p_radius_km: 50 }),
+  ]);
+  if (mine.error || near.error) return [];   // Gruppen sind optional: Startseite nicht blockieren
+  const out = new Map<string, Group>();
+  ((near.data as GroupRow[]) ?? []).forEach((r) => out.set(r.id, toGroup(r)));
+  ((mine.data as unknown as { role: Group["myRole"]; status: Group["myStatus"]; groups: GroupRow | null }[]) ?? []).forEach((m) => {
+    if (m.groups) out.set(m.groups.id, toGroup(m.groups, { role: m.role, status: m.status }));
+  });
+  return [...out.values()];
+}
+export async function groupPreview(id: string): Promise<Group | null> {
+  const { data, error } = await sb().rpc("group_preview", { p_group: id });
+  fail(error);
+  const r = ((data as GroupRow[]) ?? [])[0];
+  return r ? toGroup(r) : null;
+}
+export async function loadGroupMembers(id: string): Promise<GroupMember[]> {
+  const { data, error } = await sb().rpc("group_member_list", { p_group: id });
+  fail(error);
+  return ((data as { user_id: string; name: string; photo_url: string | null; role: GroupMember["role"]; status: GroupMember["status"]; joined_at: string }[]) ?? [])
+    .map((m) => ({ userId: m.user_id, name: m.name, photo: m.photo_url ?? undefined, role: m.role, status: m.status, joinedAt: m.joined_at }));
+}
+export async function loadGroupActivities(id: string): Promise<ActivityRow[]> {
+  const { data, error } = await sb().from("activities").select("*").eq("group_id", id).eq("status", "open")
+    .gt("starts_at", new Date(Date.now() - 3 * 3600e3).toISOString()).order("starts_at").limit(60);
+  fail(error);
+  return (data as ActivityRow[]) ?? [];
+}
+export async function createGroup(g: Partial<Group>): Promise<string> {
+  const { data, error } = await sb().from("groups").insert(groupToRow(g)).select("id").single();
+  fail(error);
+  return (data as { id: string }).id;
+}
+export async function updateGroup(id: string, g: Partial<Group>) {
+  fail((await sb().from("groups").update(groupToRow(g)).eq("id", id)).error);
+}
+export async function deleteGroup(id: string) {
+  fail((await sb().from("groups").delete().eq("id", id)).error);
+}
+export async function joinGroup(id: string): Promise<"active" | "pending"> {
+  const { data, error } = await sb().rpc("join_group", { p_group: id });
+  fail(error);
+  return data as "active" | "pending";
+}
+export async function leaveGroup(id: string) {
+  fail((await sb().rpc("leave_group", { p_group: id })).error);
+}
+export async function manageMember(groupId: string, userId: string, action: string) {
+  fail((await sb().rpc("group_manage", { p_group: groupId, p_user: userId, p_action: action })).error);
 }
 export async function cancelSeries(seriesId: string): Promise<number> {
   const { data, error } = await sb().rpc("cancel_series", { p_series: seriesId });
@@ -307,7 +415,7 @@ export async function deletePushSubscription(endpoint: string) {
   fail((await sb().from("push_subscriptions").delete().eq("endpoint", endpoint)).error);
 }
 export async function updateActivity(id: string, a: Partial<Activity>) {
-  const { error } = await sb().from("activities").update(toRow(a)).eq("id", id);
+  const { error } = await sb().from("activities").update({ ...toRow(a), ...(a.visibility ? { visibility: a.visibility } : {}) }).eq("id", id);
   fail(error);
 }
 export async function cancelActivity(id: string) {

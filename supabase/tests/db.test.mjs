@@ -273,6 +273,70 @@ await db.query("update profile_private set settings = jsonb_set(settings, '{aler
 await mk("Tempo selbst gewählt", 280, 8);
 ok(await nearCount(U.C) === c0 + 3, "Eigene Tempo-Spanne wird beachtet");
 
+// Gruppen
+const grp = (await as(U.C, "insert into groups (name, kind, city, city_lat, city_lng, join_mode, post_mode) values ('Ruhr Runners', 'club', 'essen', 51.46, 7.01, 'open', 'members') returning id")).rows[0].id;
+ok((await as(U.C, "select role from group_members where group_id=$1 and user_id=$2", [grp, U.C])).rows[0]?.role === "owner", "Ersteller wird Eigentümer der Gruppe");
+ok((await as(U.E, "select status from groups g, join_group(g.id) status where g.id=$1", [grp])).rows[0].status === "active", "Offene Gruppe: Beitritt sofort");
+ok((await as(U.E, "select member_count from groups where id=$1", [grp])).rows[0].member_count === 2, "Mitgliederzahl wird gezählt");
+ok((await as(U.D, "select id from groups_near(51.45, 7.0, 20)")).rows.some((r) => r.id === grp), "Gruppensuche in der Nähe findet die Gruppe");
+ok((await fails(U.D, "select * from group_member_list($1)", [grp])) !== null, "Mitgliederliste nur für Mitglieder");
+ok((await as(U.E, "select * from group_member_list($1)", [grp])).rows.length === 2, "Mitglieder sehen die Mitgliederliste");
+ok((await fails(U.E, "update groups set name='Gekapert' where id=$1", [grp])) === null && (await as(U.C, "select name from groups where id=$1", [grp])).rows[0].name === "Ruhr Runners", "Nur Admins können die Gruppe ändern");
+// Termin nur für Mitglieder
+const gAct = (await as(U.E, `insert into activities (title, sport, city, meeting_point, lat, lng, starts_at, distance_km, tempo, max_participants, group_id, visibility)
+  values ('Clublauf', 'run', 'essen', 'Grugapark', 51.43, 7.0, now() + interval '3 days', 8, 360, 10, $1, 'group') returning id`, [grp])).rows[0].id;
+ok((await as(U.D, "select id from activities where id=$1", [gAct])).rows.length === 0, "Termine nur für Mitglieder sind für andere unsichtbar");
+ok((await as(U.C, "select id from activities where id=$1", [gAct])).rows.length === 1, "Mitglieder sehen Gruppen-Termine");
+ok((await fails(U.D, "select join_activity($1)", [gAct])) !== null, "Nicht-Mitglieder können Gruppen-Termine nicht beitreten");
+ok((await as(U.D, "select * from public_activity($1)", [gAct])).rows.length === 0, "Gruppen-Termine sind über geteilte Links nicht öffentlich");
+await db.exec("reset role");
+ok((await db.query("select count(*)::int c from notifications where user_id=$1 and kind='group' and activity_id=$2", [U.C, gAct])).rows[0].c === 1, "Gruppenmitglieder werden über neue Termine informiert");
+ok((await fails(U.D, `insert into activities (title, sport, city, meeting_point, lat, lng, starts_at, distance_km, tempo, max_participants, group_id)
+  values ('Fremd', 'run', 'essen', 'Grugapark', 51.43, 7.0, now() + interval '3 days', 8, 360, 10, $1)`, [grp])) !== null, "Nicht-Mitglieder können keine Gruppen-Termine anlegen");
+// Gruppe mit Anfrage
+await as(U.C, "update groups set join_mode='request', post_mode='admins' where id=$1", [grp]);
+ok((await as(U.D, "select join_group($1) s", [grp])).rows[0].s === "pending", "Gruppe mit Anfrage: Beitritt wartet auf Freigabe");
+ok((await as(U.D, "select id from activities where id=$1", [gAct])).rows.length === 0, "Offene Anfrage sieht noch keine Mitglieder-Termine");
+await db.exec("reset role");
+ok((await db.query("select count(*)::int c from notifications where user_id=$1 and kind='group' and body like '%beitreten%'", [U.C])).rows[0].c === 1, "Admins werden über Beitrittsanfragen informiert");
+ok((await fails(U.E, "select group_manage($1, $2, 'approve')", [grp, U.D])) !== null, "Nur Admins können Anfragen annehmen");
+await as(U.C, "select group_manage($1, $2, 'approve')", [grp, U.D]);
+ok((await as(U.D, "select id from activities where id=$1", [gAct])).rows.length === 1, "Nach Freigabe sieht das neue Mitglied die Termine");
+ok((await fails(U.E, `insert into activities (title, sport, city, meeting_point, lat, lng, starts_at, distance_km, tempo, max_participants, group_id)
+  values ('Nur Admins', 'run', 'essen', 'Grugapark', 51.43, 7.0, now() + interval '3 days', 8, 360, 10, $1)`, [grp]))?.includes("keine Termine"), "Wenn nur Admins Termine anlegen dürfen, können Mitglieder es nicht");
+await as(U.C, "select group_manage($1, $2, 'make_admin')", [grp, U.E]);
+ok((await fails(U.E, "select group_manage($1, $2, 'remove')", [grp, U.C])) !== null, "Eigentümer kann nicht entfernt werden");
+ok((await fails(U.C, "select leave_group($1)", [grp]))?.includes("Eigentümer"), "Eigentümer kann die Gruppe nicht einfach verlassen");
+await as(U.D, "select leave_group($1)", [grp]);
+ok((await as(U.C, "select member_count from groups where id=$1", [grp])).rows[0].member_count === 2, "Austritt verringert die Mitgliederzahl");
+const hidden = (await as(U.C, "insert into groups (name, kind, listed, city) values ('Geheimer Kreis', 'verein', false, 'essen') returning id")).rows[0].id;
+ok((await as(U.D, "select id from groups where id=$1", [hidden])).rows.length === 0 && (await as(U.D, "select name from group_preview($1)", [hidden])).rows[0]?.name === "Geheimer Kreis", "Nicht gelistete Gruppen nur per Link sichtbar");
+
+// Laufende Serien
+const tpl = JSON.stringify({ title: "Montagslauf", sport: "run", city: "essen", meeting_point: "Grugapark", lat: 51.43, lng: 7.0, distance_km: 8, tempo: 360, max_participants: 10, description: "", beginner_friendly: true, breaks: false, route: { mode: "spontaneous", points: [] }, group_id: grp, visibility: "public" });
+const today = (await db.query("select (now() at time zone 'Europe/Berlin')::date::text d")).rows[0].d;
+const first = (await as(U.C, "select create_series($1::jsonb, '{1}', 1, '09:00', $2::date) id", [tpl, today])).rows[0].id;
+await db.exec("reset role");
+const occ = (await db.query("select starts_at, (starts_at at time zone 'Europe/Berlin') local, extract(isodow from starts_at at time zone 'Europe/Berlin')::int dow from activities where series_id = (select series_id from activities where id=$1) order by starts_at", [first])).rows;
+ok(occ.length >= 6 && occ.length <= 7 && occ.every((o) => o.dow === 1 && String(o.local).includes("09:00")), "Serie ohne Ende: jeden Montag um 9:00 für die nächsten Wochen (" + occ.length + " Termine)");
+ok((await db.query("select count(*)::int c from notifications where kind='group' and activity_id in (select id from activities where series_id = (select series_id from activities where id=$1))", [first])).rows[0].c === 1, "Gruppen-Hinweis zu einer Serie nur einmal (nicht pro Termin)");
+await db.query("update series set generated_until = generated_until - 14 where id = (select series_id from activities where id=$1)", [first]);
+ok((await db.query("select extend_all_series() n")).rows[0].n === 0, "Nachlegen erzeugt keine doppelten Termine");
+const two = (await as(U.C, "select create_series($1::jsonb, '{2,4}', 2, '18:30', $2::date, null, 5) id", [tpl.replace("Montagslauf", "Di und Do"), today])).rows[0].id;
+await db.exec("reset role");
+const occ2 = (await db.query("select extract(isodow from starts_at at time zone 'Europe/Berlin')::int dow from activities where series_id = (select series_id from activities where id=$1) order by starts_at", [two])).rows;
+ok(occ2.length === 5 && occ2.every((o) => o.dow === 2 || o.dow === 4), "Serie Di + Do alle 2 Wochen, begrenzt auf 5 Termine");
+ok((await db.query("select active from series where id = (select series_id from activities where id=$1)", [two])).rows[0].active === false, "Begrenzte Serie endet nach der letzten Anzahl");
+ok((await fails(U.D, "select create_series($1::jsonb, '{1}', 1, '09:00', $2::date)", [tpl, today]))?.includes("keine Termine"), "Serie in fremder Gruppe wird verweigert");
+const sid = (await db.query("select series_id from activities where id=$1", [first])).rows[0].series_id;
+ok((await as(U.C, "select cancel_series($1) n", [sid])).rows[0].n >= 6, "Ganze Serie beenden sagt alle kommenden Termine ab");
+await db.exec("reset role");
+ok((await db.query("select active from series where id=$1", [sid])).rows[0].active === false && (await db.query("select extend_all_series() n")).rows[0].n === 0, "Beendete Serie wird nicht mehr verlängert");
+ok((await as(U.E, "select weekdays, local_time::text t from series_info($1)", [sid])).rows[0]?.t === "09:00:00", "Serien-Infos für die Anzeige abrufbar");
+await as(U.C, "delete from groups where id=$1", [grp]);
+await db.exec("reset role");
+ok((await db.query("select status from activities where id=$1", [gAct])).rows[0].status === "cancelled", "Gruppe löschen sagt kommende Mitglieder-Termine ab");
+
 // Konto löschen
 await as(U.B, "select delete_my_account()");
 await db.exec("reset role");

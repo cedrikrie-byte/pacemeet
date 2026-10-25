@@ -2,7 +2,9 @@ import { useMemo, useState } from "react";
 import { Minus, Plus } from "lucide-react";
 import { useApp } from "../store/AppStore";
 import { useNav } from "../nav";
-import type { Activity, SportId } from "../types";
+import type { Activity, SeriesRule, SportId } from "../types";
+import { WEEKDAYS, isoDow, seriesDates, seriesLabel } from "../lib/series";
+import { canPost } from "../lib/groups";
 import { Button, Field, Segmented, SportIcon, Toggle, TopBar, inputCls, cx } from "../components/ui";
 import { MeetingPointPicker, initialMeeting, needsPublicConfirm, type MeetingValue } from "../components/MeetingPointPicker";
 import { RoutePlanner, type RouteValue } from "../components/RoutePlanner";
@@ -15,7 +17,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const toDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const toTime = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
-export function CreateActivity({ editId }: { editId?: string }) {
+export function CreateActivity({ editId, groupId: presetGroup }: { editId?: string; groupId?: string }) {
   const { state, api, me } = useApp();
   const nav = useNav();
   const units = state.settings.units;
@@ -61,20 +63,35 @@ export function CreateActivity({ editId }: { editId?: string }) {
 
   const [saving, setSaving] = useState(false);
   const [repeat, setRepeat] = useState(false);
-  const [weeks, setWeeks] = useState(6);
+  const [days, setDays] = useState<number[] | null>(null);   // null = Wochentag des Datums
+  const [every, setEvery] = useState<1 | 2>(1);
+  const [endMode, setEndMode] = useState<"none" | "count" | "until">("none");
+  const [count, setCount] = useState(8);
+  const [until, setUntil] = useState(() => { const d = new Date(); d.setMonth(d.getMonth() + 3); return toDate(d); });
+  const postable = state.groups.filter((g) => canPost(g));
+  const [groupId, setGroupId] = useState(editing?.groupId ?? (presetGroup && postable.some((g) => g.id === presetGroup) ? presetGroup : ""));
+  const [membersOnly, setMembersOnly] = useState(editing?.visibility === "group");
+  const dateDow = (() => { const d = new Date(`${date}T12:00`); return isNaN(d.getTime()) ? 1 : isoDow(d); })();
+  const weekdays = days ?? [dateDow];
+  const rule: SeriesRule = { weekdays, intervalWeeks: every, time, startDate: date, ...(endMode === "count" ? { maxCount: count } : endMode === "until" ? { untilDate: until } : {}) };
+  const preview = repeat ? seriesDates(rule, endMode === "none" ? 6 : 60) : [];
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const err: Record<string, string> = {};
     const start = new Date(`${date}T${time}`);
     if (title.trim().length < 3) err.title = "Gib einen Titel mit mindestens 3 Zeichen ein.";
     if (isNaN(start.getTime())) err.when = "Wähle Datum und Uhrzeit.";
-    else if (start.getTime() < Date.now() + 10 * 60000) err.when = "Der Start muss mindestens 10 Minuten in der Zukunft liegen.";
+    else if (!repeat && start.getTime() < Date.now() + 10 * 60000) err.when = "Der Start muss mindestens 10 Minuten in der Zukunft liegen.";
     if (meet.label.trim().length < 3) err.meeting = "Gib einen öffentlichen Treffpunkt an.";
     else if (needsPublicConfirm(meet) && !meet.publicOk) err.meeting = "Das sieht nach einer Wohnadresse aus. Wähle einen öffentlichen Ort oder bestätige unten, dass er öffentlich ist.";
     if (!(distKm > 0 && distKm <= 300)) err.dist = "Gib eine Distanz zwischen 0,1 und 300 an.";
     if (sport === "run" && !(tempo >= 150 && tempo <= 900)) err.tempo = "Pace im Format m:ss, zum Beispiel 7:30.";
     if (sport === "ride" && !(tempo >= 8 && tempo <= 50)) err.tempo = "Tempo zwischen 8 und 50 km/h.";
     if (editing && max < editing.participants.length + 1) err.max = `Es sind schon ${editing.participants.length + 1} Personen dabei.`;
+    if (repeat && !editing) {
+      if (endMode === "until" && until < date) err.when = "Das Ende der Serie liegt vor dem ersten Termin.";
+      else if (preview.length === 0) err.when = "Mit diesen Einstellungen entsteht kein Termin. Prüfe Wochentage und Ende.";
+    }
     if (route.mode === "planned" && route.points.length < 2) err.route = "Lass dir eine Strecke vorschlagen, zeichne sie selbst oder wähle „Spontan“.";
     setErrors(err);
     if (Object.values(err).some(Boolean)) {
@@ -88,6 +105,8 @@ export function CreateActivity({ editId }: { editId?: string }) {
       description: desc.trim(), beginnerFriendly: beginner, breaks,
       route: route.mode === "planned" ? route : { mode: "spontaneous" as const, points: [] },
       eventId: eventId || undefined,
+      groupId: groupId || undefined,
+      visibility: groupId && membersOnly ? "group" as const : "public" as const,
     };
     if (editing) {
       const changes: string[] = [];
@@ -105,13 +124,8 @@ export function CreateActivity({ editId }: { editId?: string }) {
       setSaving(true);
       let id: string | null;
       if (repeat) {
-        // Wöchentliche Serie: gleiche Uhrzeit (auch über die Zeitumstellung hinweg)
-        const seriesId = crypto.randomUUID();
-        const list: Activity[] = Array.from({ length: weeks }, (_, i) => {
-          const d = new Date(start); d.setDate(d.getDate() + 7 * i);
-          return { ...a, id: uid(), seriesId, startsAt: d.toISOString(), messages: [] };
-        });
-        id = await api.createSeries(list);
+        // Serie: der Server legt die Termine an und verlängert laufende Serien automatisch
+        id = await api.createSeries({ ...a, startsAt: preview[0].toISOString() }, rule);
       } else {
         id = await api.create(a);
       }
@@ -193,21 +207,65 @@ export function CreateActivity({ editId }: { editId?: string }) {
           <Toggle id="beginner" checked={beginner} onChange={setBeginner} label="Anfänger willkommen" desc="Niemand wird zurückgelassen." />
           <Toggle id="breaks" checked={breaks} onChange={setBreaks} label={sport === "run" ? "Geh- oder Ruhepausen" : "Pausen eingeplant"} desc="Hilft beim Einstieg oder Wiedereinstieg." />
           {!editing && (
-            <Toggle id="repeat" checked={repeat} onChange={setRepeat} label="Jede Woche wiederholen"
-              desc={repeat ? `Legt ${weeks} Termine an, jeweils ${new Date(`${date}T${time}`).toLocaleDateString("de-DE", { weekday: "long" }).toLowerCase()}s um ${time} Uhr.` : "Ideal für einen festen Lauftreff oder eine Feierabendrunde."} />
+            <Toggle id="repeat" checked={repeat} onChange={setRepeat} label="Als Serie wiederholen"
+              desc={repeat ? seriesLabel(rule) : "Für einen festen Lauftreff, z. B. jeden Montag um 9 Uhr."} />
           )}
           {!editing && repeat && (
-            <div className="flex items-center justify-between gap-3 py-3">
-              <span className="text-[14.5px] font-medium">Anzahl Wochen</span>
-              <span className="flex gap-1.5">
-                {[4, 6, 8, 12].map((w) => (
-                  <button type="button" key={w} onClick={() => setWeeks(w)} aria-pressed={weeks === w}
-                    className={cx("h-9 min-w-[44px] rounded-full border px-3 text-[13px] font-semibold tnum", weeks === w ? "border-ink bg-ink text-bg" : "border-line")}>{w}</button>
-                ))}
-              </span>
+            <div className="flex flex-col gap-4 py-3">
+              <div>
+                <p className="mb-2 text-[14px] font-medium">An welchen Tagen?</p>
+                <div className="grid grid-cols-7 gap-1.5" role="group" aria-label="Wochentage">
+                  {WEEKDAYS.map((w, i) => {
+                    const d = i + 1, on = weekdays.includes(d);
+                    return <button type="button" key={w} aria-pressed={on} onClick={() => { const next = on ? weekdays.filter((x) => x !== d) : [...weekdays, d]; if (next.length) setDays(next.sort()); }}
+                      className={cx("h-10 rounded-xl border text-[13px] font-bold", on ? "border-ink bg-ink text-bg" : "border-line text-muted")}>{w}</button>;
+                  })}
+                </div>
+              </div>
+              <div>
+                <p className="mb-2 text-[14px] font-medium">Rhythmus</p>
+                <Segmented label="Rhythmus" value={String(every) as "1" | "2"} onChange={(v) => setEvery(v === "2" ? 2 : 1)} options={[{ value: "1", label: "Jede Woche" }, { value: "2", label: "Alle 2 Wochen" }]} />
+              </div>
+              <div>
+                <p className="mb-2 text-[14px] font-medium">Ende</p>
+                <Segmented label="Ende der Serie" value={endMode} onChange={setEndMode} options={[{ value: "none", label: "Ohne Ende" }, { value: "count", label: "Anzahl" }, { value: "until", label: "Bis Datum" }]} />
+                {endMode === "count" && (
+                  <div className="mt-2 flex gap-1.5">
+                    {[4, 8, 12, 26].map((w) => (
+                      <button type="button" key={w} onClick={() => setCount(w)} aria-pressed={count === w}
+                        className={cx("h-9 min-w-[48px] rounded-full border px-3 text-[13px] font-semibold tnum", count === w ? "border-ink bg-ink text-bg" : "border-line")}>{w}</button>
+                    ))}
+                    <span className="self-center text-[12.5px] text-muted">Termine</span>
+                  </div>
+                )}
+                {endMode === "until" && <input id="until" type="date" aria-label="Letzter Tag der Serie" className={cx(inputCls, "mt-2")} value={until} min={date} onChange={(e) => setUntil(e.target.value)} />}
+              </div>
+              <div className="rounded-xl bg-raised px-3 py-2.5 text-[13px]">
+                <p className="font-semibold">{seriesLabel(rule)}</p>
+                {preview.length > 0 ? (
+                  <p className="mt-0.5 text-muted">Nächste Termine: {preview.slice(0, 4).map((d) => d.toLocaleDateString("de-DE", { weekday: "short", day: "numeric", month: "numeric" })).join(" · ")}{preview.length > 4 ? " …" : ""}</p>
+                ) : <p className="mt-0.5 text-bad">Kein Termin in der Zukunft.</p>}
+                <p className="mt-1 text-[12px] text-muted">{endMode === "none" ? "Wir legen immer die nächsten 6 Wochen an und verlängern automatisch, bis du die Serie beendest." : `${endMode === "count" ? count : preview.length} Termine insgesamt.`}</p>
+              </div>
             </div>
           )}
         </div>
+
+        {postable.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <Field label="Für eine Gruppe?" htmlFor="group" hint="Mitglieder der Gruppe werden über den Termin informiert.">
+              <select id="group" className={inputCls} value={groupId} onChange={(e) => setGroupId(e.target.value)} disabled={!!editing}>
+                <option value="">Keine Gruppe</option>
+                {postable.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+              </select>
+            </Field>
+            {groupId && (
+              <div className="rounded-2xl border border-line bg-surface px-4">
+                <Toggle id="members-only" checked={membersOnly} onChange={setMembersOnly} label="Nur für Mitglieder sichtbar" desc={membersOnly ? "Andere sehen den Termin nicht." : "Alle in der Nähe können den Termin sehen und mitmachen."} />
+              </div>
+            )}
+          </div>
+        )}
 
         {activeEvents.length > 0 && (
           <Field label="Teil eines Community-Events?" htmlFor="event" hint="Aktivitäten im Event-Zeitraum zählen für die Event-Medaille.">
@@ -220,7 +278,7 @@ export function CreateActivity({ editId }: { editId?: string }) {
       </div>
 
       <div className="absolute inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3 backdrop-blur-md">
-        <Button type="submit" block size="lg" disabled={saving}>{saving ? "Wird gespeichert …" : editing ? "Änderungen speichern" : repeat ? `${weeks} Termine veröffentlichen` : "Aktivität veröffentlichen"}</Button>
+        <Button type="submit" block size="lg" disabled={saving}>{saving ? "Wird gespeichert …" : editing ? "Änderungen speichern" : repeat ? "Serie veröffentlichen" : "Aktivität veröffentlichen"}</Button>
       </div>
     </form>
   );

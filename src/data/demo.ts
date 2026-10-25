@@ -1,5 +1,5 @@
 import { DEFAULT_ALERTS } from "../lib/alerts";
-import type { Activity, AppState, Message, Route, User } from "../types";
+import type { Activity, AppState, Group, GroupMember, Message, Route, User } from "../types";
 import { buildEvents } from "./events";
 import { placeByName } from "./places";
 
@@ -97,16 +97,16 @@ export function buildDemoActivities(): Activity[] {
     return at(1, h, m);
   };
   return [
-    act({ id: "a1", routeSeed: 2.1, eventId: "ruhr-herbst", title: "Feierabendrunde am Baldeneysee", sport: "run", meetingPoint: "Baldeneysee, Regattatribüne", startsAt: soon(18, 0), distanceKm: 8, tempo: 450, hostId: "jonas", maxParticipants: 8, participants: ["fatma", "aylin"], beginnerFriendly: true, description: "Entspannte Runde am Nordufer entlang. Wir laufen zusammen, niemand wird zurückgelassen. Danach optional ein Getränk am Seaside Beach.", messages: [msg("jonas", "Treffpunkt ist direkt unten an der Tribüne, ich trage eine orange Jacke.", 95), msg("fatma", "Super, bin dabei!", 80)] }),
+    act({ id: "a1", groupId: "g1", routeSeed: 2.1, eventId: "ruhr-herbst", title: "Feierabendrunde am Baldeneysee", sport: "run", meetingPoint: "Baldeneysee, Regattatribüne", startsAt: soon(18, 0), distanceKm: 8, tempo: 450, hostId: "jonas", maxParticipants: 8, participants: ["fatma", "aylin"], beginnerFriendly: true, description: "Entspannte Runde am Nordufer entlang. Wir laufen zusammen, niemand wird zurückgelassen. Danach optional ein Getränk am Seaside Beach.", messages: [msg("jonas", "Treffpunkt ist direkt unten an der Tribüne, ich trage eine orange Jacke.", 95), msg("fatma", "Super, bin dabei!", 80)] }),
     act({ id: "a2", routeSeed: 0.4, eventId: "ruhr-herbst", title: "Lockerer Lauf Grugapark", sport: "run", meetingPoint: "Grugapark, Haupteingang Messe", startsAt: soon(19, 15), distanceKm: 6, tempo: 420, hostId: "fatma", maxParticipants: 6, participants: ["sophie", ME], beginnerFriendly: true, breaks: true, description: "Zwei Runden durch den Park. Kurze Gehpause nach 3 km für alle, die das brauchen.", messages: [msg("fatma", "Eintritt am Messe-Eingang ist abends frei.", 300), msg("sophie", "Ich komme mit dem Rad, ab wann seid ihr da?", 200), msg("fatma", "Ab 19:05 stehe ich am Tor.", 190)] }),
     act({ id: "a3", routeSeed: 4.0, title: "Tempodauerlauf Zollverein", sport: "run", meetingPoint: "Zeche Zollverein, Vorplatz Schacht XII", startsAt: at(1, 7, 0), distanceKm: 10, tempo: 330, hostId: "lena", maxParticipants: 5, participants: ["niklas", "sophie"], description: "Zügiger Dauerlauf vor der Arbeit über das Gelände und die Halde. Gleichmäßiges Tempo, keine Pausen." }),
     act({ id: "a4", routeSeed: 0.3, eventId: "ruhr-herbst", title: "Ruhrtalradweg nach Kemnade", sport: "ride", meetingPoint: "Ruhrbrücke Hattingen (Ruhrtalradweg)", startsAt: at(1, 10, 30), distanceKm: 42, tempo: 22, hostId: "tim", maxParticipants: 10, participants: ["julia", "marco"], beginnerFriendly: true, breaks: true, description: "Flache Tour auf dem Ruhrtalradweg bis zum Kemnader See und zurück. Kaffeepause am See. Trekkingrad reicht völlig." }),
     act({ id: "a5", routeSeed: 5.2, title: "Rennradrunde Elfringhauser Schweiz", sport: "ride", meetingPoint: "Henrichshütte, Museumseingang", startsAt: at(2, 9, 0), distanceKm: 68, tempo: 28, hostId: "marco", maxParticipants: 6, participants: ["tim", "niklas", "lena", "jonas", "julia"], description: "Hügelige Runde mit ca. 850 Höhenmetern. Helm Pflicht, Gruppe fährt geschlossen, an Anstiegen wird oben gewartet." }),
     act({ id: "a6", eventId: "ruhr-herbst", title: "Einsteigerlauf mit Gehpausen", sport: "run", meetingPoint: "Stadtpark Bochum, Bismarckturm", startsAt: at(2, 11, 0), distanceKm: 4, tempo: 510, hostId: "aylin", maxParticipants: 10, participants: ["julia"], beginnerFriendly: true, breaks: true, description: "4 Minuten laufen, 1 Minute gehen. Perfekt für den Wiedereinstieg oder die allerersten Kilometer. Keine Uhr nötig." }),
     act({ id: "a7", routeSeed: 1.0, title: "Sonntagslauf am Kemnader See", sport: "run", meetingPoint: "Kemnader See, Parkplatz Haus Kemnade", startsAt: at(3, 9, 30), distanceKm: 12, tempo: 400, hostId: "niklas", maxParticipants: 8, participants: ["lena", "fatma", "jonas"], description: "Eine Runde um den See plus Abstecher an der Ruhr. Gleichmäßig, Gesprächstempo am Ende." }),
-    act({ id: "a8", routeSeed: 3.3, eventId: "ruhr-herbst", title: "Offener Lauftreff Altstadt", sport: "run", meetingPoint: "Altstadt Hattingen, Untermarkt", startsAt: at(4, 18, 30), distanceKm: 7, tempo: 420, hostId: "lth", maxParticipants: 25, participants: ["julia", "tim", "aylin", "fatma"], beginnerFriendly: true, breaks: true, description: "Unser wöchentlicher Treff. Wir teilen uns in zwei Tempogruppen auf. Neue Gesichter sind immer willkommen." }),
+    act({ id: "a8", groupId: "g2", seriesId: "s-lth", routeSeed: 3.3, eventId: "ruhr-herbst", title: "Offener Lauftreff Altstadt", sport: "run", meetingPoint: "Altstadt Hattingen, Untermarkt", startsAt: at(4, 18, 30), distanceKm: 7, tempo: 420, hostId: "lth", maxParticipants: 25, participants: ["julia", "tim", "aylin", "fatma"], beginnerFriendly: true, breaks: true, description: "Unser wöchentlicher Treff. Wir teilen uns in zwei Tempogruppen auf. Neue Gesichter sind immer willkommen." }),
     act({ id: "a9", title: "Uni-Runde nach der Vorlesung", sport: "run", meetingPoint: "Ruhr-Universität, Forumsplatz", startsAt: at(4, 17, 15), distanceKm: 5, tempo: 375, hostId: "niklas", maxParticipants: 4, participants: ["aylin", "lena", "sophie"], description: "Kurze Runde durch den Botanischen Garten und zurück." }),
-    act({ id: "a10", routeSeed: 2.6, title: "Gravel-Runde Ruhrhöhen", sport: "ride", meetingPoint: "Haus Scheppen, Baldeneysee Süd", startsAt: at(5, 14, 0), distanceKm: 38, tempo: 20, hostId: "tim", maxParticipants: 8, participants: ["sophie"], breaks: true, description: "Waldwege und Schotter rund um den Baldeneysee. Gravelbike oder MTB empfohlen." }),
+    act({ id: "a10", groupId: "g3", routeSeed: 2.6, title: "Gravel-Runde Ruhrhöhen", sport: "ride", meetingPoint: "Haus Scheppen, Baldeneysee Süd", startsAt: at(5, 14, 0), distanceKm: 38, tempo: 20, hostId: "tim", maxParticipants: 8, participants: ["sophie"], breaks: true, description: "Waldwege und Schotter rund um den Baldeneysee. Gravelbike oder MTB empfohlen." }),
     act({ id: "a11", routeSeed: 1.2, title: "Mein Samstagslauf Rü", sport: "run", meetingPoint: "Rüttenscheider Stern", startsAt: at(1, 9, 0), distanceKm: 9, tempo: 400, hostId: ME, maxParticipants: 6, participants: ["fatma"], beginnerFriendly: true, description: "Vom Stern über den Grugapark zum See und zurück. Gemütliches Tempo." }),
     act({ id: "a12", title: "Bahn-Intervalle (abgesagt)", sport: "run", meetingPoint: "Bochum Hbf, Vorplatz Ost", startsAt: at(1, 19, 0), distanceKm: 8, tempo: 300, hostId: "lena", maxParticipants: 6, participants: [ME, "niklas"], status: "cancelled", description: "Leider abgesagt.", messages: [msg("lena", "Ich muss leider absagen, die Bahn ist gesperrt. Sorry!", 60, false)] }),
     // Vergangene Aktivitäten (für Bestätigung und Liga)
@@ -117,18 +117,30 @@ export function buildDemoActivities(): Activity[] {
   ];
 }
 
+export const DEMO_GROUPS: Group[] = [
+  { id: "g1", name: "Ruhr Runners Essen", kind: "club", description: "Privat organisierter Running Club. Montags und donnerstags Feierabendrunden am Baldeneysee, sonntags lang. Alle Tempos willkommen.", city: "essen", sports: ["run"], joinMode: "open", listed: true, postMode: "members", hue: 200, memberCount: 4, ownerId: "jonas", ownerName: "Jonas K." },
+  { id: "g2", name: "TV Hattingen Leichtathletik", kind: "verein", description: "Abteilung Laufen im TV Hattingen. Offener Lauftreff jeden Mittwoch, Bahntraining für Mitglieder. Aufnahme nach kurzer Anfrage.", city: "hattingen", sports: ["run"], joinMode: "request", listed: true, postMode: "admins", hue: 10, memberCount: 3, ownerId: "lth", ownerName: "Lauftreff Hattingen", website: "https://example.org" },
+  { id: "g3", name: "Gravel Gang Ruhr", kind: "club", description: "Gravel und Schotter rund um die Ruhr, Kaffeestopp ist Pflicht.", city: "hattingen", sports: ["ride"], joinMode: "open", listed: true, postMode: "members", hue: 40, memberCount: 2, ownerId: "tim", ownerName: "Tim R." },
+];
+const mem = (userId: string, name: string, role: GroupMember["role"] = "member"): GroupMember => ({ userId, name, role, status: "active", joinedAt: "2026-03-01T10:00:00Z" });
+export const DEMO_GROUP_MEMBERS: Record<string, GroupMember[]> = {
+  g1: [mem("jonas", "Jonas K.", "owner"), mem("lena", "Lena M.", "admin"), mem("fatma", "Fatma Y."), mem("aylin", "Aylin D.")],
+  g2: [mem("lth", "Lauftreff Hattingen", "owner"), mem("julia", "Julia S."), mem("tim", "Tim R.")],
+  g3: [mem("tim", "Tim R.", "owner"), mem("sophie", "Sophie W.")],
+};
+
 export function buildDemoState(): AppState {
   const users: Record<string, User> = {};
   DEMO_USERS.forEach((x) => (users[x.id] = structuredClone(x)));
   return {
-    version: 6,
+    version: 7,
     auth: "demo",
     onboarded: false,
     meId: ME,
     locationCity: "essen",
     radiusKm: 25,
     users,
-    activities: buildDemoActivities(),
+    activities: buildDemoActivities().map((a) => a.seriesId ? { ...a, seriesRule: { weekdays: [((new Date(a.startsAt).getDay() + 6) % 7) + 1], intervalWeeks: 1 as const, time: "18:30", startDate: a.startsAt.slice(0, 10), active: true } } : a),
     events: buildEvents(),
     notifications: [
       { id: "n1", kind: "cancel", text: "Lena M. hat „Bahn-Intervalle“ abgesagt.", activityId: "a12", at: minsAgo(60), read: false },
@@ -138,11 +150,13 @@ export function buildDemoState(): AppState {
     settings: {
       theme: "system", units: "metric", language: "de-DE",
       profileVisibility: "participants", showPace: true, showHistory: false, showAwards: true,
-      notify: { changes: true, chat: true, joins: true, reminders: true },
+      notify: { changes: true, chat: true, joins: true, reminders: true, groups: true },
       alerts: { ...DEFAULT_ALERTS },
     },
     league: { optIn: false, visibility: "private" },
     blocked: [],
     reports: [],
+    groups: structuredClone(DEMO_GROUPS),
+    groupMembers: structuredClone(DEMO_GROUP_MEMBERS),
   };
 }

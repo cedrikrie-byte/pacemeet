@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
-import type { Activity, AppState, LeagueSettings, Notif, NotifKind, Settings, User } from "../types";
+import type { Activity, AppState, Group, GroupMember, LeagueSettings, Notif, NotifKind, SeriesRule, Settings, User } from "../types";
+import { seriesDates } from "../lib/series";
 import { clearState, loadState, saveState } from "../lib/storage";
 import { buildDemoState } from "../data/demo";
 import { uid } from "../lib/format";
@@ -36,7 +37,7 @@ export type ToastFn = (t: string, tone?: Toast["tone"]) => void;
 /** Demo-Modus: alles lokal im Browser, andere Nutzer werden simuliert. */
 function makeDemoApi(dispatch: React.Dispatch<Action>, get: () => AppState, toast: ToastFn) {
   const set = (fn: (s: AppState) => AppState) => dispatch({ type: "set", fn });
-  const notifyKey: Record<NotifKind, keyof Settings["notify"] | null> = { change: "changes", cancel: "changes", join: "joins", chat: "chat", reminder: "reminders", system: null, nearby: null };
+  const notifyKey: Record<NotifKind, keyof Settings["notify"] | null> = { change: "changes", cancel: "changes", join: "joins", chat: "chat", reminder: "reminders", system: null, nearby: null, group: "groups" };
   const notify = (kind: NotifKind, text: string, activityId?: string) => set((s) => {
     const k = notifyKey[kind];
     if (k && !s.settings.notify[k]) return s;
@@ -138,11 +139,65 @@ function makeDemoApi(dispatch: React.Dispatch<Action>, get: () => AppState, toas
     async exportData(): Promise<unknown> { const s = get(); return { hinweis: "Demo-Daten", profil: s.users[s.meId], aktivitaeten: s.activities.filter((a) => a.hostId === s.meId || a.participants.includes(s.meId)) }; },
     async loadLeague() {},
     async loadUser(_id: string) {},
-    /** Mehrere Termine einer Serie anlegen; gibt die ID des ersten Termins zurück. */
-    async createSeries(list: Activity[]): Promise<string | null> {
+    /** Serie anlegen (Vorlage + Rhythmus); gibt die ID des ersten Termins zurück. */
+    async createSeries(template: Activity, rule: SeriesRule): Promise<string | null> {
+      const seriesId = uid();
+      const dates = seriesDates(rule, rule.maxCount || rule.untilDate ? 60 : 6);
+      const list: Activity[] = dates.map((d) => ({ ...template, id: uid(), seriesId, seriesRule: { ...rule, active: true }, startsAt: d.toISOString(), messages: [] }));
       set((s) => ({ ...s, activities: [...list, ...s.activities] }));
-      toast(`${list.length} Termine veröffentlicht`, "good");
+      toast(rule.maxCount || rule.untilDate ? `Serie mit ${list.length} Terminen veröffentlicht` : "Serie veröffentlicht. Neue Termine kommen automatisch dazu.", "good");
       return list[0]?.id ?? null;
+    },
+    async seriesInfo(_seriesId: string): Promise<SeriesRule | null> { return null; },
+
+    // --- Gruppen (Demo) ---
+    async createGroup(g: Partial<Group>): Promise<string | null> {
+      const s0 = get(); const me = s0.users[s0.meId];
+      const id = uid();
+      const group: Group = { id, name: g.name ?? "", kind: g.kind ?? "club", description: g.description ?? "", city: g.city ?? me.city, cityPos: g.cityPos, sports: g.sports ?? me.sports, joinMode: g.joinMode ?? "open", listed: g.listed ?? true, postMode: g.postMode ?? "members", hue: g.hue ?? 20, website: g.website, memberCount: 1, ownerId: s0.meId, ownerName: me.name, myRole: "owner", myStatus: "active" };
+      set((s) => ({ ...s, groups: [group, ...s.groups], groupMembers: { ...s.groupMembers, [id]: [{ userId: s.meId, name: me.name, photo: me.photo, role: "owner", status: "active", joinedAt: now() }] } }));
+      toast("Gruppe gegründet", "good");
+      return id;
+    },
+    async updateGroup(id: string, patch: Partial<Group>): Promise<boolean> {
+      set((s) => ({ ...s, groups: s.groups.map((g) => (g.id === id ? { ...g, ...patch } : g)) }));
+      toast("Gruppe gespeichert", "good");
+      return true;
+    },
+    async deleteGroup(id: string): Promise<boolean> {
+      const t = Date.now();
+      set((s) => ({ ...s, groups: s.groups.filter((g) => g.id !== id), activities: s.activities.map((a) => a.groupId === id && a.visibility === "group" && a.status === "open" && new Date(a.startsAt).getTime() > t ? { ...a, status: "cancelled" as const } : a) }));
+      toast("Gruppe gelöscht", "warn");
+      return true;
+    },
+    async joinGroup(id: string): Promise<void> {
+      const s0 = get(); const me = s0.users[s0.meId]; const g = s0.groups.find((x) => x.id === id); if (!g) return;
+      const status = g.joinMode === "open" ? "active" as const : "pending" as const;
+      const m: GroupMember = { userId: s0.meId, name: me.name, photo: me.photo, role: "member", status, joinedAt: now() };
+      set((s) => ({ ...s, groups: s.groups.map((x) => x.id === id ? { ...x, myRole: "member", myStatus: status, memberCount: x.memberCount + (status === "active" ? 1 : 0) } : x), groupMembers: { ...s.groupMembers, [id]: [...(s.groupMembers[id] ?? []).filter((y) => y.userId !== s.meId), m] } }));
+      if (status === "active") { toast(`Willkommen bei ${g.name}!`, "good"); return; }
+      toast("Anfrage gesendet. Die Admins entscheiden.", "good");
+      later(3000, () => {
+        set((s) => ({ ...s, groups: s.groups.map((x) => x.id === id && x.myStatus === "pending" ? { ...x, myStatus: "active", memberCount: x.memberCount + 1 } : x), groupMembers: { ...s.groupMembers, [id]: (s.groupMembers[id] ?? []).map((y) => y.userId === s.meId ? { ...y, status: "active" } : y) } }));
+        notify("group", `Du bist jetzt Mitglied in „${g.name}“.`);
+      });
+    },
+    async leaveGroup(id: string): Promise<void> {
+      set((s) => ({ ...s, groups: s.groups.map((x) => x.id === id ? { ...x, myRole: undefined, myStatus: undefined, memberCount: Math.max(0, x.memberCount - (x.myStatus === "active" ? 1 : 0)) } : x), groupMembers: { ...s.groupMembers, [id]: (s.groupMembers[id] ?? []).filter((y) => y.userId !== s.meId) } }));
+      toast("Du hast die Gruppe verlassen.");
+    },
+    async loadGroup(_id: string): Promise<void> {},
+    async ensureGroup(id: string): Promise<boolean> { return get().groups.some((g) => g.id === id); },
+    async manageMember(groupId: string, userId: string, action: "approve" | "decline" | "remove" | "make_admin" | "make_member"): Promise<void> {
+      set((s) => {
+        let list = s.groupMembers[groupId] ?? [];
+        if (action === "approve") list = list.map((m) => m.userId === userId ? { ...m, status: "active" } : m);
+        else if (action === "decline" || action === "remove") list = list.filter((m) => m.userId !== userId);
+        else list = list.map((m) => m.userId === userId ? { ...m, role: action === "make_admin" ? "admin" : "member" } : m);
+        const count = list.filter((m) => m.status === "active").length;
+        return { ...s, groupMembers: { ...s.groupMembers, [groupId]: list }, groups: s.groups.map((g) => g.id === groupId ? { ...g, memberCount: count } : g) };
+      });
+      toast(action === "approve" ? "Aufgenommen" : action === "make_admin" ? "Ist jetzt Admin" : action === "make_member" ? "Ist jetzt Mitglied" : "Entfernt", "good");
     },
     cancelSeries(seriesId: string) {
       const t = Date.now();

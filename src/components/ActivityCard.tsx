@@ -1,4 +1,5 @@
-import { Clock, Coffee, MapPin, Repeat, Route as RouteIcon, Sprout, Users } from "lucide-react";
+import { Clock, Coffee, Lock, MapPin, Repeat, Route as RouteIcon, Sprout, Users } from "lucide-react";
+import { seriesLabel } from "../lib/series";
 import type { Activity } from "../types";
 import { useApp } from "../store/AppStore";
 import { useNav } from "../nav";
@@ -17,6 +18,7 @@ export function ActivityCard({ a, compact }: { a: Activity; compact?: boolean })
   const tl = tempoLabel(a.sport, a.tempo);
   const ev = a.eventId ? state.events.find((e) => e.id === a.eventId) : null;
   const cancelled = a.status === "cancelled";
+  const group = a.groupId ? state.groups.find((g) => g.id === a.groupId) : undefined;
 
   return (
     <button
@@ -46,13 +48,16 @@ export function ActivityCard({ a, compact }: { a: Activity; compact?: boolean })
         <Stat value={fmtDuration(durationMin(a.sport, a.distanceKm, a.tempo))} label="ca. Dauer" />
       </div>
 
-      {!compact && (a.beginnerFriendly || a.breaks || a.route?.mode === "planned" || ev || a.seriesId) && (
+      {(!compact || group) && (a.beginnerFriendly || a.breaks || a.route?.mode === "planned" || ev || a.seriesId || group) && (
         <div className="mt-3 flex flex-wrap gap-1.5">
-          {a.seriesId && <Pill icon={<Repeat size={12} />}>Jede Woche</Pill>}
+          {group && <Pill accent icon={a.visibility === "group" ? <Lock size={12} /> : <Users size={12} />}>{group.name}</Pill>}
+          {!compact && a.seriesId && <Pill icon={<Repeat size={12} />}>{a.seriesRule ? seriesLabel(a.seriesRule).split(",")[0] : "Serie"}</Pill>}
+          {compact ? null : <>
           {a.beginnerFriendly && <Pill icon={<Sprout size={12} />}>Anfänger willkommen</Pill>}
           {a.breaks && <Pill icon={<Coffee size={12} />}>{a.sport === "run" ? "Gehpausen" : "Pausen"}</Pill>}
           {a.route?.mode === "planned" && <Pill icon={<RouteIcon size={12} />}>{a.route.source === "loop" ? "Rundkurs" : a.route.source === "a2b" && a.route.destination ? `nach ${a.route.destination}` : "Route geplant"}{a.route.ascentM ? ` · ${a.route.ascentM} Hm` : ""}</Pill>}
           {ev && <Pill accent icon={<Clock size={12} />}>{ev.name}</Pill>}
+          </>}
         </div>
       )}
 

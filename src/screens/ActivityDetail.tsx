@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { CalendarDays, Check, Coffee, Copy, ExternalLink, Flag, Lock, MapPin, MessageCircle, Pencil, Repeat, Route as RouteIcon, Share2, ShieldCheck, Sprout, TriangleAlert, Users } from "lucide-react";
+import { useEffect, useState } from "react";
+import { CalendarDays, Check, ChevronRight, Coffee, Copy, ExternalLink, Flag, Lock, MapPin, MessageCircle, Pencil, Repeat, Route as RouteIcon, Share2, ShieldCheck, Sprout, TriangleAlert, Users } from "lucide-react";
 import { useApp } from "../store/AppStore";
 import { useNav } from "../nav";
 import { Avatar, Button, Empty, IconButton, Sheet, SportTag, TopBar, cx } from "../components/ui";
@@ -8,6 +8,9 @@ import { durationMin, fmtDateLong, fmtDistance, fmtDuration, fmtTempo, fmtTime, 
 import { cityName, isHost, isJoined, needsMyConfirmation, spotsLeft, totalPeople } from "../lib/activity";
 import { hasEnded, hasStarted } from "../lib/xp";
 import { routeLengthKm } from "../lib/geo";
+import { seriesLabel } from "../lib/series";
+import { kindLabel } from "../lib/groups";
+import { GroupBadge } from "../components/GroupBadge";
 
 export function ActivityDetail({ id }: { id: string }) {
   const { state, api } = useApp();
@@ -18,6 +21,8 @@ export function ActivityDetail({ id }: { id: string }) {
   const [confirmSeries, setConfirmSeries] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [present, setPresent] = useState<string[] | null>(null);
+  const needRule = !!a?.seriesId && !a.seriesRule;
+  useEffect(() => { if (needRule && a?.seriesId) void api.seriesInfo(a.seriesId); }, [needRule, a?.seriesId]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!a) return <div><TopBar onBack={nav.back} title="Aktivität" /><div className="p-4"><Empty icon={<CalendarDays />} title="Nicht gefunden" text="Diese Aktivität gibt es nicht mehr." /></div></div>;
 
   const units = state.settings.units;
@@ -26,6 +31,7 @@ export function ActivityDetail({ id }: { id: string }) {
   const left = spotsLeft(a);
   const ended = hasEnded(a), started = hasStarted(a);
   const cancelled = a.status === "cancelled";
+  const group = a.groupId ? state.groups.find((g) => g.id === a.groupId) : undefined;
   const tl = tempoLabel(a.sport, a.tempo);
   const ev = a.eventId ? state.events.find((e) => e.id === a.eventId) : null;
   const msUntil = new Date(a.startsAt).getTime() - Date.now();
@@ -65,10 +71,18 @@ export function ActivityDetail({ id }: { id: string }) {
           <div className="flex flex-wrap items-center gap-2">
             <SportTag sport={a.sport} />
             {ev && <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[12px] font-bold text-accent">{ev.name}</span>}
-            {a.seriesId && <span className="inline-flex items-center gap-1 rounded-full bg-raised px-2 py-0.5 text-[12px] font-bold"><Repeat size={12} /> Jede Woche</span>}
+            {a.seriesId && <span className="inline-flex items-center gap-1 rounded-full bg-raised px-2 py-0.5 text-[12px] font-bold"><Repeat size={12} /> {a.seriesRule ? seriesLabel(a.seriesRule) : "Serie"}</span>}
+            {a.visibility === "group" && <span className="inline-flex items-center gap-1 rounded-full bg-raised px-2 py-0.5 text-[12px] font-bold"><Lock size={12} /> Nur Mitglieder</span>}
           </div>
           <h1 className="mt-2 font-display text-[28px] font-black leading-[1.05]">{a.title}</h1>
           <p className="mt-2 flex items-center gap-1.5 text-[15px] font-semibold"><CalendarDays size={16} className="text-muted" /> {fmtDateLong(a.startsAt)}, {fmtTime(a.startsAt)} Uhr</p>
+          {group && (
+            <button onClick={() => nav.push({ name: "group", id: group.id })} className="mt-3 flex w-full items-center gap-2.5 rounded-2xl border border-line bg-surface px-3 py-2.5 text-left">
+              <GroupBadge group={group} size={34} />
+              <span className="min-w-0 flex-1"><span className="block text-[12px] text-muted">{kindLabel(group.kind)}</span><span className="block truncate text-[14px] font-bold">{group.name}</span></span>
+              <ChevronRight size={18} className="text-muted" />
+            </button>
+          )}
           <button onClick={() => !mine && nav.push({ name: "user", id: a.hostId })} className="mt-3 flex items-center gap-2.5 text-left">
             <Avatar user={host} size={36} />
             <span><span className="block text-[12px] text-muted">{host.kind === "club" ? "Verein / Gruppe" : "Gastgeber:in"}</span><span className="block text-[14px] font-bold">{mine ? "Du" : host.name}</span></span>
@@ -169,7 +183,7 @@ export function ActivityDetail({ id }: { id: string }) {
           )}
           {!mine && <button onClick={() => nav.push({ name: "user", id: a.hostId })} className="mt-2 inline-flex items-center gap-1.5 self-start text-[13px] font-semibold text-muted hover:text-ink"><Flag size={14} /> Problem mit dieser Aktivität melden</button>}
           {mine && !cancelled && !started && <button onClick={() => setConfirmCancel(true)} className="mt-2 self-start text-[13px] font-semibold text-bad">Aktivität absagen</button>}
-          {mine && !cancelled && !started && a.seriesId && <button onClick={() => setConfirmSeries(true)} className="self-start text-[13px] font-semibold text-bad">Alle kommenden Termine der Serie absagen</button>}
+          {mine && !cancelled && !started && a.seriesId && <button onClick={() => setConfirmSeries(true)} className="self-start text-[13px] font-semibold text-bad">Serie beenden (alle kommenden Termine absagen)</button>}
         </section>
       </div>
 
@@ -194,7 +208,7 @@ export function ActivityDetail({ id }: { id: string }) {
         <p className="text-[15px] leading-relaxed">Die Gruppe wird automatisch informiert, und dein Platz wird wieder frei.</p>
         {late && <p className={cx("mt-3 flex gap-2 rounded-xl bg-warn/12 p-3 text-[13.5px] text-warn")}><TriangleAlert size={17} className="shrink-0" /> Der Start ist in weniger als 2 Stunden. Kurzfristige Absagen werden in deinem Profil gezählt.</p>}
       </Sheet>
-      <Sheet open={confirmSeries} onClose={() => setConfirmSeries(false)} title="Ganze Serie absagen?"
+      <Sheet open={confirmSeries} onClose={() => setConfirmSeries(false)} title="Serie beenden?"
         footer={<div className="flex gap-2"><Button variant="secondary" block onClick={() => setConfirmSeries(false)}>Zurück</Button><Button variant="danger" block onClick={() => { api.cancelSeries(a.seriesId!); setConfirmSeries(false); }}>Alle absagen</Button></div>}>
         <p className="text-[15px] leading-relaxed">Alle kommenden Termine dieser wöchentlichen Serie werden abgesagt und alle Angemeldeten benachrichtigt. Vergangene Termine bleiben erhalten.</p>
       </Sheet>

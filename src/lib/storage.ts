@@ -3,7 +3,7 @@ import { buildDemoState } from "../data/demo";
 import { DEFAULT_ALERTS } from "./alerts";
 
 const KEY = "pacemeet-demo-state";
-const VERSION = 6;
+const VERSION = 7;
 
 export function loadState(): AppState {
   try {

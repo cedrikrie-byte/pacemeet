@@ -77,6 +77,7 @@ export function Settings() {
           <Toggle id="n-changes" checked={s.notify.changes} onChange={(v) => api.setSettings({ notify: { ...s.notify, changes: v } })} label="Änderungen und Absagen" desc="Empfohlen. Zeit, Treffpunkt oder Absage einer Aktivität." />
           <Toggle id="n-chat" checked={s.notify.chat} onChange={(v) => api.setSettings({ notify: { ...s.notify, chat: v } })} label="Neue Chat-Nachrichten" />
           <Toggle id="n-joins" checked={s.notify.joins} onChange={(v) => api.setSettings({ notify: { ...s.notify, joins: v } })} label="Neue Teilnehmende bei meinen Aktivitäten" />
+          <Toggle id="n-groups" checked={s.notify.groups !== false} onChange={(v) => api.setSettings({ notify: { ...s.notify, groups: v } })} label="Neues aus meinen Gruppen" desc="Neue Termine und Serien, Aufnahme in eine Gruppe." />
           <Toggle id="n-rem" checked={s.notify.reminders} onChange={(v) => api.setSettings({ notify: { ...s.notify, reminders: v } })} label="Erinnerungen und Bestätigungen" />
         </Group>
 

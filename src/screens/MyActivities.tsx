@@ -6,11 +6,16 @@ import { ActivityCard } from "../components/ActivityCard";
 import { Button, Empty, Segmented } from "../components/ui";
 import { isHost, isMember, needsMyConfirmation } from "../lib/activity";
 import { hasEnded } from "../lib/xp";
+import { GroupsView } from "./Groups";
+import { cx } from "../components/ui";
 
 export function MyActivities() {
   const { state } = useApp();
   const nav = useNav();
   const [tab, setTab] = useState<"upcoming" | "past">("upcoming");
+  const [view, setView] = useState<"dates" | "groups">(() => { try { return (sessionStorage.getItem("pm-mine-view") as "dates" | "groups") || "dates"; } catch { return "dates"; } });
+  const pick = (v: "dates" | "groups") => { setView(v); try { sessionStorage.setItem("pm-mine-view", v); } catch { /* egal */ } };
+  const pendingGroups = state.groups.filter((g) => (g.myRole === "owner" || g.myRole === "admin") && g.myStatus === "active" && (state.groupMembers[g.id] ?? []).some((m) => m.status === "pending")).length;
   const mine = state.activities.filter((a) => isMember(state, a));
   const upcoming = mine.filter((a) => !hasEnded(a)).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
   const past = mine.filter((a) => hasEnded(a)).sort((a, b) => b.startsAt.localeCompare(a.startsAt));
@@ -21,11 +26,18 @@ export function MyActivities() {
   return (
     <div className="screen-in">
       <header className="sticky top-0 z-20 border-b border-line/60 bg-bg/85 px-4 pb-3 pt-4 backdrop-blur-md">
-        <h1 className="font-display text-[26px] font-black">Meine Aktivitäten</h1>
-        <div className="mt-3"><Segmented label="Zeitraum" value={tab} onChange={setTab} options={[{ value: "upcoming", label: `Kommend (${upcoming.length})` }, { value: "past", label: `Vergangen (${past.length})` }]} /></div>
+        <div className="flex items-baseline gap-5" role="tablist" aria-label="Bereich">
+          {([["dates", "Aktivitäten"], ["groups", "Gruppen"]] as const).map(([v, l]) => (
+            <button key={v} role="tab" aria-selected={view === v} onClick={() => pick(v)}
+              className={cx("relative font-display font-black transition", view === v ? "text-[26px] text-ink" : "text-[20px] text-muted")}>
+              {l}{v === "groups" && pendingGroups > 0 && <span className="absolute -right-2.5 top-1 h-2 w-2 rounded-full bg-accent" />}
+            </button>
+          ))}
+        </div>
+        {view === "dates" && <div className="mt-3"><Segmented label="Zeitraum" value={tab} onChange={setTab} options={[{ value: "upcoming", label: `Kommend (${upcoming.length})` }, { value: "past", label: `Vergangen (${past.length})` }]} /></div>}
       </header>
       <div className="flex flex-col gap-7 px-4 pb-8 pt-4">
-        {tab === "upcoming" ? (
+        {view === "groups" ? <GroupsView /> : tab === "upcoming" ? (
           upcoming.length === 0 ? (
             <Empty icon={<CalendarPlus size={22} />} title="Noch nichts geplant" text="Finde eine Runde in deiner Nähe oder lade selbst ein." action={<Button size="sm" onClick={() => nav.tab("discover")}>Aktivitäten entdecken</Button>} />
           ) : (

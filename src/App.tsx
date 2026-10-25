@@ -21,9 +21,12 @@ import { LIVE } from "./config/backend";
 import { LegalScreen } from "./screens/Legal";
 import { Moderation } from "./screens/Moderation";
 import { PublicActivityScreen } from "./screens/PublicActivity";
+import { GroupDetail } from "./screens/GroupDetail";
+import { GroupEdit } from "./screens/GroupEdit";
 
-/** Geteilter Link: …/#a-<id> */
+/** Geteilter Link: …/#a-<id> (Aktivität) oder …/#g-<id> (Gruppe) */
 const readShare = () => /^#a-([0-9a-zA-Z-]{6,})$/.exec(window.location.hash)?.[1] ?? null;
+const readGroupShare = () => /^#g-([0-9a-zA-Z-]{2,})$/.exec(window.location.hash)?.[1] ?? null;
 const clearHash = () => { try { history.replaceState(null, "", window.location.pathname + window.location.search); } catch { /* ignorieren */ } };
 
 const TABS: Tab[] = ["discover", "mine", "league", "profile"];
@@ -78,6 +81,18 @@ function Shell() {
     });
     return () => { on = false; };
   }, [ready, shareId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Einladungslink zu einer Gruppe: nach dem Laden öffnen
+  const [groupShare, setGroupShare] = useState<string | null>(readGroupShare);
+  useEffect(() => {
+    const h = () => setGroupShare(readGroupShare());
+    window.addEventListener("hashchange", h);
+    return () => window.removeEventListener("hashchange", h);
+  }, []);
+  useEffect(() => {
+    if (!ready || !groupShare) return;
+    nav.push({ name: "group", id: groupShare });
+    setGroupShare(null); clearHash();
+  }, [ready, groupShare]); // eslint-disable-line react-hooks/exhaustive-deps
   const isTab = TABS.includes(current.name as Tab);
   const activeTab = isTab ? (current.name as Tab) : null;
   const unconfirmed = state.activities.filter((a) => a.status === "open" && (a.participants.includes(state.meId)) && !a.selfConfirmed.includes(state.meId) && new Date(a.startsAt).getTime() < Date.now() - 3 * 3600e3).length;
@@ -88,7 +103,9 @@ function Shell() {
       case "mine": return <MyActivities />;
       case "league": return <League />;
       case "profile": return <Profile />;
-      case "create": return <CreateActivity key={current.editId ?? "new"} editId={current.editId} />;
+      case "create": return <CreateActivity key={current.editId ?? "new" + (current.groupId ?? "")} editId={current.editId} groupId={current.groupId} />;
+      case "group": return <GroupDetail key={current.id} id={current.id} />;
+      case "groupEdit": return <GroupEdit key={current.id ?? "new"} id={current.id} />;
       case "activity": return <ActivityDetail key={current.id} id={current.id} />;
       case "chat": return <Chat id={current.id} />;
       case "user": return <UserProfile id={current.id} />;

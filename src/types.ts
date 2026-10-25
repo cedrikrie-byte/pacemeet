@@ -98,12 +98,57 @@ export interface Activity {
   messages: Message[];
   route?: Route;
   eventId?: string;
-  /** Gemeinsame ID aller Termine einer wöchentlichen Serie */
+  /** Gemeinsame ID aller Termine einer Serie */
   seriesId?: string;
+  /** Rhythmus der Serie (Demo direkt, live per series_info nachgeladen) */
+  seriesRule?: SeriesRule;
+  /** Gehört zu einer Gruppe */
+  groupId?: string;
+  /** "group" = nur für Mitglieder der Gruppe sichtbar */
+  visibility?: "public" | "group";
   updatedAt?: string;
 }
 
-export type NotifKind = "change" | "cancel" | "join" | "chat" | "reminder" | "system" | "nearby";
+export type NotifKind = "change" | "cancel" | "join" | "chat" | "reminder" | "system" | "nearby" | "group";
+
+/** Wiederholung: Wochentage (1 = Montag … 7 = Sonntag), Rhythmus und Ende */
+export interface SeriesRule {
+  weekdays: number[];
+  intervalWeeks: 1 | 2;
+  /** Uhrzeit "HH:MM" (Ortszeit) */
+  time: string;
+  /** Erster möglicher Tag "YYYY-MM-DD" */
+  startDate: string;
+  /** Ende als Datum (optional) */
+  untilDate?: string;
+  /** Ende nach Anzahl Terminen (optional); ohne beides läuft die Serie weiter */
+  maxCount?: number;
+  active?: boolean;
+}
+
+export type GroupKind = "club" | "verein";
+export type GroupRole = "owner" | "admin" | "member";
+export interface Group {
+  id: string;
+  name: string;
+  kind: GroupKind;
+  description: string;
+  city: string;
+  cityPos?: [number, number];
+  sports: SportId[];
+  joinMode: "open" | "request";
+  listed: boolean;
+  postMode: "members" | "admins";
+  hue: number;
+  website?: string;
+  memberCount: number;
+  ownerId?: string;
+  ownerName?: string;
+  /** eigene Rolle, falls Mitglied */
+  myRole?: GroupRole;
+  myStatus?: "active" | "pending";
+}
+export interface GroupMember { userId: string; name: string; photo?: string; role: GroupRole; status: "active" | "pending"; joinedAt: string; }
 export interface Notif { id: string; kind: NotifKind; text: string; activityId?: string; at: string; read: boolean; }
 
 export interface Settings {
@@ -114,7 +159,7 @@ export interface Settings {
   showPace: boolean;
   showHistory: boolean;
   showAwards: boolean;
-  notify: { changes: boolean; chat: boolean; joins: boolean; reminders: boolean };
+  notify: { changes: boolean; chat: boolean; joins: boolean; reminders: boolean; groups: boolean };
   alerts: AlertPrefs;
 }
 
@@ -160,4 +205,8 @@ export interface AppState {
   league: LeagueSettings;
   blocked: string[];
   reports: Report[];
+  /** Eigene Gruppen und Gruppen in der Nähe */
+  groups: Group[];
+  /** Mitgliederlisten (nur geladen, wenn geöffnet) */
+  groupMembers: Record<string, GroupMember[]>;
 }
