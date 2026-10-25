@@ -6,7 +6,9 @@ import { Field, inputCls, cx } from "./ui";
 import { CITIES } from "../config/app";
 import { PLACES } from "../data/places";
 import { geocode, reverseGeocode, type GeoResult } from "../lib/mapServices";
-import { looksLikeHomeAddress } from "../lib/activity";
+import { cityName, looksLikeHomeAddress } from "../lib/activity";
+import { knownCityPos } from "../lib/location";
+import { CityPicker } from "./CityPicker";
 import type { SportId } from "../types";
 
 type P = [number, number];
@@ -20,14 +22,16 @@ export interface MeetingValue {
   /** Treffer war eine Hausadresse */
   addressHit: boolean;
   publicOk: boolean;
+  /** Mittelpunkt der Stadt (für Suche und Kartenausschnitt) */
+  cityCenter?: P;
 }
 
-export function initialMeeting(city: string, label = "", pos?: P): MeetingValue {
-  const c = CITIES.find((x) => x.id === city) ?? CITIES[0];
+export function initialMeeting(city: string, label = "", pos?: P, cityCenter?: P): MeetingValue {
+  const center: P = knownCityPos(city) ?? cityCenter ?? [CITIES[0].lat, CITIES[0].lng];
   const place = PLACES.find((p) => p.name === label);
   return {
-    city, label,
-    pos: pos ?? (place ? [place.lat, place.lng] : [c.lat, c.lng]),
+    city, label, cityCenter: center,
+    pos: pos ?? (place ? [place.lat, place.lng] : center),
     placed: !!pos || !!place, addressHit: false, publicOk: false,
   };
 }
@@ -43,7 +47,8 @@ export function MeetingPointPicker({ value, onChange, sport, error }: { value: M
   const [typing, setTyping] = useState(false);
   const [locating, setLocating] = useState(false);
   const [fitKey, setFitKey] = useState("init");
-  const cityObj = CITIES.find((c) => c.id === value.city) ?? CITIES[0];
+  const cityCenter: P = value.cityCenter ?? knownCityPos(value.city) ?? [CITIES[0].lat, CITIES[0].lng];
+  const [cityOpen, setCityOpen] = useState(false);
   const reqId = useRef(0);
   const set = (p: Partial<MeetingValue>, moved = false) => onChange({ ...value, ...p }, moved);
 
@@ -55,12 +60,12 @@ export function MeetingPointPicker({ value, onChange, sport, error }: { value: M
     const ctrl = new AbortController();
     const t = window.setTimeout(async () => {
       setSearching(true); setSearchErr("");
-      try { setResults(await geocode(q, value.placed ? value.pos : [cityObj.lat, cityObj.lng], ctrl.signal)); }
+      try { setResults(await geocode(q, value.placed ? value.pos : cityCenter, ctrl.signal)); }
       catch { if (!ctrl.signal.aborted) setSearchErr("Suche gerade nicht erreichbar. Setze den Treffpunkt auf der Karte."); }
       finally { if (!ctrl.signal.aborted) setSearching(false); }
     }, 350);
     return () => { ctrl.abort(); window.clearTimeout(t); };
-  }, [value.label, live, typing, cityObj.lat, cityObj.lng, value.placed, value.pos]);
+  }, [value.label, live, typing, cityCenter, value.placed, value.pos]);
 
   function pickResult(r: GeoResult) {
     const label = r.isAddress ? r.name : r.detail ? `${r.name}, ${r.detail.split(", ").pop()}` : r.name;
@@ -95,11 +100,8 @@ export function MeetingPointPicker({ value, onChange, sport, error }: { value: M
     <div className="flex flex-col gap-3">
       <Field label="Öffentlicher Treffpunkt" htmlFor="meeting" error={error} hint="Zum Beispiel ein Parkeingang, Platz oder Bahnhof. Bitte keine Wohnadressen.">
         <div className="flex gap-2">
-          <select id="city" aria-label="Stadt" value={value.city}
-            onChange={(e) => { const c = CITIES.find((x) => x.id === e.target.value)!; set({ city: c.id, label: "", pos: [c.lat, c.lng], placed: false, addressHit: false }, true); setFitKey(`city-${c.id}`); }}
-            className={cx(inputCls, "!w-[38%] shrink-0")}>
-            {CITIES.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <button type="button" id="city" onClick={() => setCityOpen((o) => !o)} aria-expanded={cityOpen}
+            className={cx(inputCls, "!w-[38%] shrink-0 truncate text-left font-semibold")}>{cityName(value.city) || "Stadt"}</button>
           <div className="relative min-w-0 flex-1">
             <input id="meeting" className={cx(inputCls, live && "!pl-9")} value={value.label} autoComplete="off"
               onChange={(e) => { setTyping(true); set({ label: e.target.value, addressHit: false, publicOk: false }); }}
@@ -109,6 +111,10 @@ export function MeetingPointPicker({ value, onChange, sport, error }: { value: M
         </div>
       </Field>
 
+      {cityOpen && (
+        <CityPicker id="meet-city" value={{ id: value.city, name: cityName(value.city), pos: cityCenter }} autoFocus
+          onPick={(c) => { setCityOpen(false); set({ city: c.id, cityCenter: c.pos, label: "", pos: c.pos, placed: false, addressHit: false }, true); setFitKey(`city-${c.id}`); }} />
+      )}
       {results.length > 0 && (
         <ul role="listbox" aria-label="Suchergebnisse" className="-mt-1 overflow-hidden rounded-xl border border-line bg-surface">
           {results.map((r) => (

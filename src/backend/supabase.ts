@@ -19,7 +19,7 @@ export function sb(): SupabaseClient {
 
 interface ProfileRow {
   id: string; name: string; city: string; sports: SportId[]; pace: number; speed: number; bio: string;
-  public_age: number | null; photo_url: string | null; bests: User["bests"]; kind: "person" | "club";
+  public_age: number | null; photo_url: string | null; city_lat: number | null; city_lng: number | null; bests: User["bests"]; kind: "person" | "club";
   profile_visibility: "everyone" | "participants"; league_opt_in: boolean; league_visibility: "private" | "friends" | "local"; created_at: string;
 }
 interface PrivateRow { id: string; age: number | null; settings: Partial<Settings>; }
@@ -52,7 +52,7 @@ const hueOf = (id: string) => [...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)
 
 function toUser(p: ProfileRow, rel?: User["reliability"]): User {
   return {
-    id: p.id, name: p.name, city: p.city, sports: p.sports, pace: p.pace, speed: Number(p.speed), bio: p.bio,
+    id: p.id, name: p.name, city: p.city, cityPos: p.city_lat != null && p.city_lng != null ? [p.city_lat, p.city_lng] : undefined, sports: p.sports, pace: p.pace, speed: Number(p.speed), bio: p.bio,
     hue: hueOf(p.id), photo: p.photo_url ?? undefined, kind: p.kind, bests: p.bests ?? [],
     age: p.public_age ?? undefined, showAge: p.public_age != null,
     reliability: rel ?? { attended: 0, hosted: 0, lateCancels: 0, memberSince: p.created_at },
@@ -101,7 +101,7 @@ export async function hasProfile(uid: string): Promise<boolean> {
 }
 export async function createProfile(uid: string, p: Partial<User>, settings: Settings) {
   const { error } = await sb().from("profiles").insert({
-    id: uid, name: p.name, city: p.city, sports: p.sports, pace: p.pace, speed: p.speed, bio: p.bio ?? "",
+    id: uid, name: p.name, city: p.city, city_lat: p.cityPos?.[0] ?? null, city_lng: p.cityPos?.[1] ?? null, sports: p.sports, pace: p.pace, speed: p.speed, bio: p.bio ?? "",
     profile_visibility: settings.profileVisibility,
   });
   fail(error);
@@ -112,16 +112,20 @@ const settingsToStore = (s: Settings) => ({ theme: s.theme, units: s.units, lang
 
 // --- Laden ----------------------------------------------------------------------
 
-export type Snapshot = Pick<AppState, "users" | "activities" | "events" | "notifications" | "blocked" | "league" | "settings"> & { meId: string; locationCity: string; profileVisibility: Settings["profileVisibility"] };
+export type Snapshot = Pick<AppState, "users" | "activities" | "events" | "notifications" | "blocked" | "league" | "settings" | "locationPos"> & { meId: string; locationCity: string; profileVisibility: Settings["profileVisibility"] };
 
-export async function loadSnapshot(uid: string, cityId: string | null, radiusKm: number, base: Settings): Promise<Snapshot> {
+export async function loadSnapshot(uid: string, cityId: string | null, cityPos: [number, number] | null, radiusKm: number, base: Settings): Promise<Snapshot> {
   const db = sb();
   const [{ data: me, error: e1 }, { data: priv }] = await Promise.all([
     db.from("profiles").select("*").eq("id", uid).single<ProfileRow>(),
     db.from("profile_private").select("*").eq("id", uid).maybeSingle<PrivateRow>(),
   ]);
   fail(e1);
-  const city = CITIES.find((c) => c.id === (cityId || me!.city)) ?? CITIES[0];
+  // Bezugspunkt: gewählte Stadt, sonst Profilstadt, sonst Startgebiet
+  const cityName = cityId || me!.city || CITIES[0].name;
+  const known = CITIES.find((c) => c.id === cityName || c.name.toLowerCase() === cityName.toLowerCase());
+  const center: [number, number] = cityPos ?? ((!cityId || cityId === me!.city) && me!.city_lat != null && me!.city_lng != null ? [me!.city_lat, me!.city_lng] : null) ?? (known ? [known.lat, known.lng] : [CITIES[0].lat, CITIES[0].lng]);
+  const city = { id: cityName, lat: center[0], lng: center[1] };
 
   const [near, mine, notifs, blocks, events, rel] = await Promise.all([
     db.rpc("activities_near", { p_lat: city.lat, p_lng: city.lng, p_radius_km: radiusKm }),
@@ -161,6 +165,7 @@ export async function loadSnapshot(uid: string, cityId: string | null, radiusKm:
   return {
     meId: uid,
     locationCity: city.id,
+    locationPos: center,
     users,
     activities: [...rows.values()].map((r) => toActivity(r, parts.data as PartRow[], msgs.data as MsgRow[])),
     events: (events.data as EventRow[]).map(toEvent),
@@ -297,7 +302,7 @@ export async function updateProfile(uid: string, p: Partial<User>) {
   let photo = p.photo;
   if (photo && photo.startsWith("data:")) photo = await uploadPhoto(uid, photo);
   const { error } = await sb().from("profiles").update({
-    name: p.name, city: p.city, sports: p.sports, pace: p.pace, speed: p.speed, bio: p.bio, bests: p.bests,
+    name: p.name, city: p.city, city_lat: p.cityPos?.[0] ?? null, city_lng: p.cityPos?.[1] ?? null, sports: p.sports, pace: p.pace, speed: p.speed, bio: p.bio, bests: p.bests,
     photo_url: photo ?? null, public_age: p.showAge && p.age ? p.age : null,
   }).eq("id", uid);
   fail(error);

@@ -6,7 +6,8 @@ import { useApp } from "../store/AppStore";
 import type { SportId } from "../types";
 import { Button, DemoTag, Field, SportIcon, inputCls, cx } from "../components/ui";
 import { Logo } from "./Discover";
-import { APP, CITIES } from "../config/app";
+import { APP } from "../config/app";
+import { CityPicker, type CityValue } from "../components/CityPicker";
 import { SPORT_LIST } from "../data/sports";
 import { clockToSec, secToClock } from "../lib/format";
 
@@ -24,7 +25,7 @@ export function Onboarding() {
   // Nach erfolgreicher Code-Anmeldung ohne Profil direkt zur Profilerstellung
   useEffect(() => { if (needsProfile) { setStep((x) => x || 1); setErr(""); } }, [needsProfile]);
   const [name, setName] = useState("");
-  const [city, setCity] = useState("essen");
+  const [city, setCity] = useState<CityValue | null>(null);
   const [sports, setSports] = useState<SportId[]>(["run"]);
   const [pace, setPace] = useState(secToClock(me.pace));
   const [speed, setSpeed] = useState(String(me.speed));
@@ -109,7 +110,8 @@ export function Onboarding() {
     const p = clockToSec(pace);
     if (name.trim().length < 2) { setStep(1); setErr("Bitte gib deinen Namen an."); return; }
     if (sports.includes("run") && (!p || p < 150 || p > 900)) { setErr("Pace im Format m:ss, z. B. 6:30."); return; }
-    api.onboard({ name: name.trim(), city, sports, pace: p ?? me.pace, speed: parseFloat(speed) || me.speed, bio: bio.trim() });
+    if (!city) { setStep(1); setErr("Bitte wähle deine Stadt."); return; }
+    api.onboard({ name: name.trim(), city: city.id, cityPos: city.pos, sports, pace: p ?? me.pace, speed: parseFloat(speed) || me.speed, bio: bio.trim() });
   }
 
   return (
@@ -123,9 +125,11 @@ export function Onboarding() {
             <input id="o-name" autoFocus className={inputCls} value={name} onChange={(e) => { setName(e.target.value); setErr(""); }} maxLength={30} />
           </Field>
           <Field label="Wo bist du unterwegs?" htmlFor="o-city" hint="Start in Deutschland. Nur die Stadt ist für andere sichtbar.">
-            <select id="o-city" className={inputCls} value={city} onChange={(e) => setCity(e.target.value)}>{CITIES.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+            {city
+              ? <div className="flex items-center justify-between rounded-xl border border-ink px-4 py-3"><span className="font-semibold">{city.name}</span><button type="button" className="text-[13px] font-semibold text-accent" onClick={() => setCity(null)}>Ändern</button></div>
+              : <CityPicker id="o-city" value={city} onPick={(c) => { setCity(c); setErr(""); }} />}
           </Field>
-          <div className="mt-auto"><Button size="lg" block onClick={() => { if (name.trim().length < 2) setErr("Bitte gib deinen Namen an."); else { setErr(""); setStep(2); } }}>Weiter</Button></div>
+          <div className="mt-auto"><Button size="lg" block onClick={() => { if (name.trim().length < 2) setErr("Bitte gib deinen Namen an."); else if (!city) setErr("Bitte wähle deine Stadt."); else { setErr(""); setStep(2); } }}>Weiter</Button></div>
         </div>
       ) : (
         <div className="mt-2 flex flex-1 flex-col gap-5">

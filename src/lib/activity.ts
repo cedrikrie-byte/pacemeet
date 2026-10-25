@@ -1,6 +1,7 @@
 import type { Activity, AppState } from "../types";
 import { CITIES } from "../config/app";
 import { haversineKm } from "./geo";
+import { myPos } from "./location";
 import { hasEnded } from "./xp";
 
 export const participantCount = (a: Activity) => a.participantCount ?? a.participants.length;
@@ -10,8 +11,7 @@ export const isHost = (s: AppState, a: Activity) => a.hostId === s.meId;
 export const isJoined = (s: AppState, a: Activity) => a.participants.includes(s.meId);
 export const isMember = (s: AppState, a: Activity) => isHost(s, a) || isJoined(s, a);
 export function distanceFromMe(s: AppState, a: Activity): number {
-  const c = CITIES.find((x) => x.id === s.locationCity) ?? CITIES[0];
-  return haversineKm([c.lat, c.lng], [a.lat, a.lng]);
+  return haversineKm(myPos(s), [a.lat, a.lng]);
 }
 export const cityName = (id: string) => CITIES.find((c) => c.id === id)?.name ?? id;
 

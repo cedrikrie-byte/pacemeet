@@ -1,13 +1,14 @@
 import type { Action, Api, ToastFn } from "./AppStore";
 import type { Activity, AppState, LeagueSettings, Settings, User } from "../types";
 import * as be from "../backend/supabase";
+import { knownCityPos } from "../lib/location";
 
 /** Leerer Zustand für den Live-Modus (vor der Anmeldung). */
 export function buildLiveState(): AppState {
-  let radius = 25, city = "essen";
-  try { const r = JSON.parse(localStorage.getItem("pacemeet-live-prefs") || "{}"); radius = r.radiusKm ?? radius; city = r.locationCity ?? city; } catch { /* ignorieren */ }
+  let radius = 25, city = "", pos: [number, number] | undefined;
+  try { const r = JSON.parse(localStorage.getItem("pacemeet-live-prefs") || "{}"); radius = r.radiusKm ?? radius; city = r.locationCity ?? city; pos = r.locationPos; } catch { /* ignorieren */ }
   return {
-    version: 6, auth: "loading", onboarded: false, meId: "", locationCity: city, radiusKm: radius,
+    version: 6, auth: "loading", onboarded: false, meId: "", locationCity: city, locationPos: pos, radiusKm: radius,
     users: {}, activities: [], events: [], notifications: [], blocked: [], reports: [],
     settings: {
       theme: "system", units: "metric", language: "de-DE", profileVisibility: "participants",
@@ -19,7 +20,7 @@ export function buildLiveState(): AppState {
 }
 
 function savePrefs(s: AppState) {
-  try { localStorage.setItem("pacemeet-live-prefs", JSON.stringify({ radiusKm: s.radiusKm, locationCity: s.locationCity })); } catch { /* ignorieren */ }
+  try { localStorage.setItem("pacemeet-live-prefs", JSON.stringify({ radiusKm: s.radiusKm, locationCity: s.locationCity, locationPos: s.locationPos })); } catch { /* ignorieren */ }
 }
 
 /** Wird von startLive gesetzt: nach dem Anlegen des Profils Echtzeit starten. */
@@ -37,7 +38,7 @@ export function makeLiveApi(dispatch: React.Dispatch<Action>, get: () => AppStat
       const s = get();
       if (!s.meId) return;
       try {
-        const snap = await be.loadSnapshot(s.meId, s.locationCity, s.radiusKm, s.settings);
+        const snap = await be.loadSnapshot(s.meId, s.locationCity, s.locationPos ?? null, s.radiusKm, s.settings);
         const before = new Set(get().notifications.map((n) => n.id));
         set((cur) => ({ ...cur, ...snap, auth: "ready", onboarded: true }));
         // Neue Benachrichtigung kurz anzeigen (nicht beim ersten Laden)
@@ -74,7 +75,8 @@ export function makeLiveApi(dispatch: React.Dispatch<Action>, get: () => AppStat
       const s = get();
       try {
         await be.createProfile(s.meId, { ...profile, city: profile.city ?? s.locationCity }, s.settings);
-        set((cur) => ({ ...cur, locationCity: profile.city ?? cur.locationCity, auth: "loading" }));
+        set((cur) => ({ ...cur, locationCity: profile.city ?? cur.locationCity, locationPos: profile.cityPos ?? cur.locationPos, auth: "loading" }));
+        savePrefs(get());
         await reload();
         afterProfile?.();
         toast("Willkommen! Dein Profil ist angelegt.", "good");
@@ -129,7 +131,7 @@ export function makeLiveApi(dispatch: React.Dispatch<Action>, get: () => AppStat
       const s = get();
       void run(() => be.saveLeague(s.meId, s.league.optIn, s.league.visibility)).then(() => api.loadLeague());
     },
-    setLocation(city: string) { set((s) => ({ ...s, locationCity: city })); savePrefs(get()); void reload(); },
+    setLocation(city: string, pos?: [number, number]) { set((s) => ({ ...s, locationCity: city, locationPos: pos ?? knownCityPos(city) ?? undefined })); savePrefs(get()); void reload(); },
     setRadius(km: number) { set((s) => ({ ...s, radiusKm: km })); savePrefs(get()); window.clearTimeout(radiusTimer); radiusTimer = window.setTimeout(() => void reload(), 400); },
     reset() { void reload(); },
     reload,

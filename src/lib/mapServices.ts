@@ -81,3 +81,18 @@ export async function reverseGeocode(p: [number, number]): Promise<{ label: stri
     clearTimeout(t);
   }
 }
+
+export interface CityResult { id: string; name: string; region: string; pos: [number, number]; }
+
+/** Städte und Orte im Startmarkt suchen (z. B. „Münster“). */
+export async function searchCities(q: string, signal?: AbortSignal): Promise<CityResult[]> {
+  const r = await fetch(`${MAP.geocodeUrl}?q=${encodeURIComponent(q)}&lang=de&limit=10&layer=city`, { signal });
+  if (!r.ok) throw new Error("Suche nicht erreichbar");
+  const j = await r.json() as { features: { geometry: { coordinates: [number, number] }; properties: Record<string, string> }[] };
+  const seen = new Set<string>();
+  return j.features
+    .filter((f) => !MAP.countries.length || MAP.countries.includes((f.properties.countrycode || "").toUpperCase()))
+    .map((f) => ({ id: f.properties.name, name: f.properties.name, region: f.properties.state || f.properties.county || "", pos: [f.geometry.coordinates[1], f.geometry.coordinates[0]] as [number, number] }))
+    .filter((c) => { const k = `${c.name}|${c.region}`; if (seen.has(k)) return false; seen.add(k); return true; })
+    .slice(0, 6);
+}

@@ -4,7 +4,9 @@ import { useApp } from "../store/AppStore";
 import { useNav } from "../nav";
 import type { Best, SportId } from "../types";
 import { Avatar, Button, Field, SportIcon, Toggle, TopBar, inputCls, cx } from "../components/ui";
-import { CITIES } from "../config/app";
+import { CityPicker, type CityValue } from "../components/CityPicker";
+import { cityName } from "../lib/activity";
+import { knownCityPos } from "../lib/location";
 import { SPORT_LIST } from "../data/sports";
 import { clockToSec, secToClock, uid } from "../lib/format";
 
@@ -35,7 +37,8 @@ export function EditProfile() {
   const { me, api } = useApp();
   const nav = useNav();
   const [name, setName] = useState(me.name);
-  const [city, setCity] = useState(me.city);
+  const [city, setCity] = useState<CityValue>({ id: me.city, name: cityName(me.city), pos: me.cityPos ?? knownCityPos(me.city) ?? [51.4556, 7.0116] });
+  const [cityOpen, setCityOpen] = useState(false);
   const [sports, setSports] = useState<SportId[]>(me.sports);
   const [pace, setPace] = useState(secToClock(me.pace));
   const [speed, setSpeed] = useState(String(me.speed));
@@ -55,7 +58,7 @@ export function EditProfile() {
     const a = age ? parseInt(age) : undefined; if (age && (!a || a < 16 || a > 99)) er.age = "Alter zwischen 16 und 99, oder leer lassen.";
     if (!sports.length) er.sports = "Wähle mindestens eine Sportart.";
     setErr(er); if (Object.keys(er).length) return;
-    api.updateProfile({ name: name.trim(), city, sports, pace: p ?? me.pace, speed: parseFloat(speed) || me.speed, bio: bio.trim(), age: a, showAge: a ? showAge : false, photo, bests: bests.filter((b) => b.value.trim()) });
+    api.updateProfile({ name: name.trim(), city: city.id, cityPos: city.pos, sports, pace: p ?? me.pace, speed: parseFloat(speed) || me.speed, bio: bio.trim(), age: a, showAge: a ? showAge : false, photo, bests: bests.filter((b) => b.value.trim()) });
     nav.back();
   }
 
@@ -73,7 +76,9 @@ export function EditProfile() {
         </div>
         <Field label="Anzeigename" htmlFor="name" error={err.name} hint="Wir empfehlen Vorname und Initial, z. B. „Alex R.“"><input id="name" className={inputCls} value={name} onChange={(e) => setName(e.target.value)} maxLength={30} /></Field>
         <Field label="Region" htmlFor="pcity" hint="Nur die Stadt wird angezeigt, nie deine Adresse.">
-          <select id="pcity" className={inputCls} value={city} onChange={(e) => setCity(e.target.value)}>{CITIES.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+          {cityOpen
+            ? <CityPicker id="pcity" value={city} onPick={(c) => { setCity(c); setCityOpen(false); }} autoFocus />
+            : <div className="flex items-center justify-between rounded-xl border border-line px-4 py-3"><span className="font-semibold">{city.name}</span><button type="button" className="text-[13px] font-semibold text-accent" onClick={() => setCityOpen(true)}>Ändern</button></div>}
         </Field>
         <Field label="Kurzbeschreibung" htmlFor="bio" hint={`${bio.length}/200`}><textarea id="bio" rows={3} maxLength={200} className={cx(inputCls, "h-auto py-3")} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Wann und wie trainierst du gern?" /></Field>
 

@@ -6,7 +6,9 @@ import { useNav } from "../nav";
 import type { Activity, SportId } from "../types";
 import { ActivityCard } from "../components/ActivityCard";
 import { Button, Chip, Empty, IconButton, Segmented, Sheet, SportIcon, Toggle, cx } from "../components/ui";
-import { APP, CITIES } from "../config/app";
+import { APP } from "../config/app";
+import { CityPicker } from "../components/CityPicker";
+import { myPos } from "../lib/location";
 import { dayDiff, fmtDateLong, fmtDistance, fmtTempo, secToClock } from "../lib/format";
 import { cityName, distanceFromMe, needsMyConfirmation, spotsLeft } from "../lib/activity";
 import { hasEnded } from "../lib/xp";
@@ -100,7 +102,7 @@ export function Discover() {
           </div>
           <div className="flex items-center">
             <button onClick={() => setCitySheet(true)} className="flex h-10 items-center gap-1 rounded-full px-3 text-[13px] font-semibold hover:bg-raised">
-              <MapPin size={15} className="text-accent" /> {cityName(state.locationCity)} <ChevronDown size={14} className="text-muted" />
+              <MapPin size={15} className="text-accent" /> {cityName(state.locationCity) || "Stadt wählen"} <ChevronDown size={14} className="text-muted" />
             </button>
             <IconButton label="Benachrichtigungen" badge={unread} onClick={() => nav.push({ name: "notifications" })}><Bell size={20} /></IconButton>
           </div>
@@ -152,7 +154,7 @@ export function Discover() {
 
         {mode === "map" && list.length > 0 ? (
           <div className="flex flex-col gap-3">
-            <MapView points={[]} center={[CITIES.find((c) => c.id === state.locationCity)!.lat, CITIES.find((c) => c.id === state.locationCity)!.lng]}
+            <MapView points={[]} center={myPos(state)}
               markers={list.map((a) => ({ id: a.id, lat: a.lat, lng: a.lng, sport: a.sport, label: a.title }))}
               selectedId={sel} onMarker={setSel} spanKm={20} aspect={360 / 380} fitKey={list.map((a) => a.id).join(",")} />
             {sel && list.find((a) => a.id === sel) ? <ActivityCard a={list.find((a) => a.id === sel)!} /> : (
@@ -199,13 +201,9 @@ export function Discover() {
 
       <Sheet open={citySheet} onClose={() => setCitySheet(false)} title="Standort">
         <p className="mb-3 text-[13px] text-muted">Wir nutzen nur die ungefähre Stadt, nie deinen genauen Standort. Start zunächst in Deutschland.</p>
-        <div className="flex flex-col gap-2 pb-2">
-          {CITIES.map((c) => (
-            <button key={c.id} onClick={() => { api.setLocation(c.id); setCitySheet(false); }} className={cx("flex items-center justify-between rounded-xl border px-4 py-3 text-left", state.locationCity === c.id ? "border-ink" : "border-line")}>
-              <span className="font-semibold">{c.name}</span><span className="text-[12px] text-muted">{c.country}</span>
-            </button>
-          ))}
-          <p className="mt-2 text-[12.5px] text-muted">Weitere Städte und Länder folgen nach dem Start.</p>
+        <div className="pb-2">
+          <CityPicker id="loc-search" value={{ id: state.locationCity, name: cityName(state.locationCity), pos: myPos(state) }}
+            onPick={(c) => { api.setLocation(c.id, c.pos); setCitySheet(false); }} />
         </div>
       </Sheet>
     </div>

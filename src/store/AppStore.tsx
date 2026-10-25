@@ -5,6 +5,7 @@ import { buildDemoState } from "../data/demo";
 import { uid } from "../lib/format";
 import { LIVE } from "../config/backend";
 import { buildLiveState, makeLiveApi, startLive } from "./liveApi";
+import { knownCityPos } from "../lib/location";
 
 export type Action =
   | { type: "set"; fn: (s: AppState) => AppState }
@@ -48,7 +49,7 @@ function makeDemoApi(dispatch: React.Dispatch<Action>, get: () => AppState, toas
   return {
     notify,
     onboard(profile: Partial<User>) {
-      set((s) => ({ ...s, onboarded: true, users: { ...s.users, [s.meId]: { ...s.users[s.meId], ...profile } }, locationCity: profile.city ?? s.locationCity }));
+      set((s) => ({ ...s, onboarded: true, users: { ...s.users, [s.meId]: { ...s.users[s.meId], ...profile } }, locationCity: profile.city ?? s.locationCity, locationPos: profile.cityPos ?? s.locationPos }));
     },
     updateProfile(p: Partial<User>) {
       set((s) => ({ ...s, users: { ...s.users, [s.meId]: { ...s.users[s.meId], ...p } } }));
@@ -125,7 +126,7 @@ function makeDemoApi(dispatch: React.Dispatch<Action>, get: () => AppState, toas
     report(userId: string, reason: string) { set((s) => ({ ...s, reports: [...s.reports, { userId, reason, at: now() }] })); toast("Meldung gesendet. Unser Team prüft sie.", "good"); },
     setSettings(p: Partial<Settings>) { set((s) => ({ ...s, settings: { ...s.settings, ...p, notify: { ...s.settings.notify, ...(p.notify || {}) } } })); },
     setLeague(p: Partial<LeagueSettings>) { set((s) => ({ ...s, league: { ...s.league, ...p } })); },
-    setLocation(city: string) { set((s) => ({ ...s, locationCity: city })); },
+    setLocation(city: string, pos?: [number, number]) { set((s) => ({ ...s, locationCity: city, locationPos: pos ?? knownCityPos(city) ?? undefined })); },
     setRadius(km: number) { set((s) => ({ ...s, radiusKm: km })); },
     reset() { clearState(); dispatch({ type: "replace", state: buildDemoState() }); toast("Demo zurückgesetzt"); },
     // Im Demo-Modus ohne Funktion (nur Live-Modus)

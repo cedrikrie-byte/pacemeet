@@ -6,6 +6,7 @@ import type { Activity, SportId } from "../types";
 import { Button, Field, Segmented, SportIcon, Toggle, TopBar, inputCls, cx } from "../components/ui";
 import { MeetingPointPicker, initialMeeting, needsPublicConfirm, type MeetingValue } from "../components/MeetingPointPicker";
 import { RoutePlanner, type RouteValue } from "../components/RoutePlanner";
+import { myPos } from "../lib/location";
 import { SPORTS, PLANNED_SPORTS } from "../data/sports";
 import { clockToSec, durationMin, fmtDuration, fmtTempo, secToClock, tempoLabel, uid } from "../lib/format";
 
@@ -44,7 +45,7 @@ export function CreateActivity({ editId }: { editId?: string }) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [meet, setMeet] = useState<MeetingValue>(() => editing
     ? { ...initialMeeting(editing.city, editing.meetingPoint, [editing.lat, editing.lng]), publicOk: true }
-    : initialMeeting(state.locationCity));
+    : initialMeeting(state.locationCity, "", undefined, myPos(state)));
   const center = meet.pos;
 
   function onMeeting(v: MeetingValue, moved: boolean) {

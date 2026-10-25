@@ -22,7 +22,8 @@ export interface Reliability {
 export interface User {
   id: string;
   name: string;           // Vorname + Initial (öffentlich)
-  city: string;           // City-ID (nur ungefähre Region)
+  city: string;           // Stadtname bzw. Kürzel (nur ungefähre Region)
+  cityPos?: [number, number]; // Stadtmittelpunkt, keine Wohnadresse
   sports: SportId[];
   pace: number;           // sek/km
   speed: number;          // km/h
@@ -130,7 +131,8 @@ export interface AppState {
   leagueBoard?: { local: LeagueRow[]; friends: LeagueRow[] };
   onboarded: boolean;
   meId: string;
-  locationCity: string;
+  locationCity: string;      // Name (oder Kürzel aus CITIES) der gewählten Stadt
+  locationPos?: [number, number]; // Mittelpunkt der gewählten Stadt
   radiusKm: number;
   users: Record<string, User>;
   activities: Activity[];
