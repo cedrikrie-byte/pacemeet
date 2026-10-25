@@ -162,8 +162,11 @@ export { reducer };
 const C = createContext<Ctx | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, undefined, () => (LIVE ? buildLiveState() : loadState()));
+  const [state, rawDispatch] = useReducer(reducer, undefined, () => (LIVE ? buildLiveState() : loadState()));
   const ref = useRef(state); ref.current = state;
+  // Änderungen sofort im Ref sichtbar machen, damit get() direkt danach den neuen Stand liefert
+  // (sonst sieht z. B. das Laden nach der Anmeldung noch keine Nutzer-ID).
+  const dispatch = useCallback((a: Action) => { ref.current = reducer(ref.current, a); rawDispatch(a); }, []);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toast = useCallback((text: string, tone?: Toast["tone"]) => {
     const t = { id: uid(), text, tone };
