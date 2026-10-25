@@ -372,3 +372,8 @@ export async function adminReports(status: "open" | "done" | "all"): Promise<Adm
 export async function adminSetReportStatus(id: string, status: AdminReport["status"]) { fail((await sb().rpc("admin_set_report_status", { p_report: id, p_status: status })).error); }
 export async function adminSuspend(userId: string, reason: string) { fail((await sb().rpc("admin_suspend", { p_user: userId, p_reason: reason })).error); }
 export async function adminUnsuspend(userId: string) { fail((await sb().rpc("admin_unsuspend", { p_user: userId })).error); }
+
+export async function adminSaveEvent(e: { id: string; name: string; start: string; end: string; required: number; medal: string; description: string; hue: number }) {
+  fail((await sb().from("events").upsert({ id: e.id, name: e.name, starts_on: e.start, ends_on: e.end, required: e.required, medal: e.medal, description: e.description, hue: e.hue })).error);
+}
+export async function adminDeleteEvent(id: string) { fail((await sb().from("events").delete().eq("id", id)).error); }

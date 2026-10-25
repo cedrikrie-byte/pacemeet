@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { Ban, CheckCircle2, Flag, Loader2, RotateCcw, ShieldCheck, XCircle } from "lucide-react";
+import { Ban, CalendarHeart, CheckCircle2, Flag, Loader2, RotateCcw, ShieldCheck, Trash2, XCircle } from "lucide-react";
 import { useNav } from "../nav";
 import { useApp } from "../store/AppStore";
-import { Button, Empty, Segmented, Sheet, TopBar, cx } from "../components/ui";
+import { Button, Empty, Field, Segmented, Sheet, TopBar, inputCls, cx } from "../components/ui";
+import { MedalIcon } from "../components/Awards";
 import * as be from "../backend/supabase";
-import { fmtAgo } from "../lib/format";
+import { fmtAgo, fmtDay } from "../lib/format";
 
 const STATUS_LABEL: Record<be.AdminReport["status"], string> = { open: "Offen", reviewed: "Geprüft", actioned: "Maßnahme ergriffen", dismissed: "Kein Verstoß" };
 
@@ -12,6 +13,7 @@ const STATUS_LABEL: Record<be.AdminReport["status"], string> = { open: "Offen", 
 export function Moderation() {
   const nav = useNav();
   const { state } = useApp();
+  const [area, setArea] = useState<"reports" | "events">("reports");
   const [tab, setTab] = useState<"open" | "done">("open");
   const [rows, setRows] = useState<be.AdminReport[] | null>(null);
   const [err, setErr] = useState("");
@@ -20,9 +22,10 @@ export function Moderation() {
   const [reason, setReason] = useState("");
 
   const load = useCallback(async () => {
+    if (area !== "reports") return;
     setErr("");
     try { setRows(await be.adminReports(tab)); } catch (e) { setErr((e as Error).message); setRows([]); }
-  }, [tab]);
+  }, [tab, area]);
   useEffect(() => { setRows(null); void load(); }, [load]);
 
   async function act(id: string, fn: () => Promise<void>) {
@@ -38,6 +41,8 @@ export function Moderation() {
     <div className="screen-in pb-10">
       <TopBar onBack={nav.back} title="Moderation" sub="Meldungen von Nutzerinnen und Nutzern" />
       <div className="flex flex-col gap-4 px-4 pt-4">
+        <Segmented label="Bereich" value={area} onChange={setArea} options={[{ value: "reports", label: <><Flag size={14} /> Meldungen</> }, { value: "events", label: <><CalendarHeart size={14} /> Events</> }]} />
+        {area === "events" ? <EventsAdmin /> : <>
         <Segmented label="Status" value={tab} onChange={setTab} options={[{ value: "open", label: "Offen" }, { value: "done", label: "Erledigt" }]} />
         {err && <p className="rounded-xl bg-bad/10 p-3 text-[13.5px] text-bad">{err}</p>}
         {rows === null ? (
@@ -70,6 +75,7 @@ export function Moderation() {
             </div>
           </article>
         ))}
+        </>}
       </div>
 
       <Sheet open={!!suspendFor} onClose={() => setSuspendFor(null)} title={`${suspendFor?.reportedName ?? "Konto"} sperren?`}
@@ -81,6 +87,85 @@ export function Moderation() {
           <textarea id="suspend-reason" rows={3} maxLength={300} value={reason} onChange={(e) => setReason(e.target.value)}
             className="w-full rounded-xl border border-line bg-surface px-3.5 py-3 text-[15px] outline-none focus:border-bad" />
         </div>
+      </Sheet>
+    </div>
+  );
+}
+
+const pad = (n: number) => String(n).padStart(2, "0");
+const toDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const HUES = [22, 200, 140, 280, 340, 45];
+
+/** Community-Events anlegen und löschen. Medaillen gibt es fürs Mitmachen, nicht für Zeiten. */
+function EventsAdmin() {
+  const { state, api } = useApp();
+  const today = new Date(); const inWeek = new Date(Date.now() + 6 * 86400000);
+  const [name, setName] = useState("");
+  const [medal, setMedal] = useState("");
+  const [start, setStart] = useState(toDate(today));
+  const [end, setEnd] = useState(toDate(inWeek));
+  const [required, setRequired] = useState(3);
+  const [desc, setDesc] = useState("");
+  const [hue, setHue] = useState(HUES[0]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
+  const [del, setDel] = useState<string | null>(null);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    if (name.trim().length < 3) return setMsg({ text: "Gib dem Event einen Namen (mind. 3 Zeichen).", bad: true });
+    if (medal.trim().length < 2) return setMsg({ text: "Gib der Medaille einen kurzen Namen.", bad: true });
+    if (end < start) return setMsg({ text: "Das Ende liegt vor dem Beginn.", bad: true });
+    const id = `${name.trim().toLowerCase().replace(/[^a-z0-9äöüß]+/g, "-").replace(/^-|-$/g, "").slice(0, 40)}-${start.slice(0, 7)}`;
+    setBusy(true); setMsg(null);
+    try {
+      await be.adminSaveEvent({ id, name: name.trim(), start: new Date(`${start}T00:00`).toISOString(), end: new Date(`${end}T23:59`).toISOString(), required, medal: medal.trim(), description: desc.trim(), hue });
+      await api.reload();
+      setName(""); setMedal(""); setDesc("");
+      setMsg({ text: "Event angelegt. Es ist jetzt für alle sichtbar." });
+    } catch (x) { setMsg({ text: (x as Error).message, bad: true }); } finally { setBusy(false); }
+  }
+
+  const events = [...state.events].sort((a, b) => b.start.localeCompare(a.start));
+  return (
+    <div className="flex flex-col gap-5">
+      <form onSubmit={save} noValidate className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-4">
+        <h2 className="font-display text-[17px] font-extrabold">Neues Event</h2>
+        <Field label="Name" htmlFor="ev-name"><input id="ev-name" className={inputCls} value={name} onChange={(e) => setName(e.target.value)} maxLength={60} placeholder="z. B. Winterlauf-Woche" /></Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Beginn" htmlFor="ev-start"><input id="ev-start" type="date" className={inputCls} value={start} onChange={(e) => setStart(e.target.value)} /></Field>
+          <Field label="Ende" htmlFor="ev-end"><input id="ev-end" type="date" className={inputCls} value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Medaille" htmlFor="ev-medal"><input id="ev-medal" className={inputCls} value={medal} onChange={(e) => setMedal(e.target.value)} maxLength={30} placeholder="z. B. Winterläufer" /></Field>
+          <Field label="Nötige Aktivitäten" htmlFor="ev-req"><input id="ev-req" type="number" min={1} max={50} className={cx(inputCls, "tnum")} value={required} onChange={(e) => setRequired(Math.max(1, Math.min(50, +e.target.value || 1)))} /></Field>
+        </div>
+        <Field label="Beschreibung" htmlFor="ev-desc"><textarea id="ev-desc" rows={2} maxLength={300} className={cx(inputCls, "h-auto py-3")} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Was ist die Idee? Gilt für jedes Tempo." /></Field>
+        <div className="flex items-center gap-3">
+          <MedalIcon hue={hue} size={44} />
+          <div className="flex gap-1.5" role="radiogroup" aria-label="Farbe der Medaille">
+            {HUES.map((h) => <button key={h} type="button" role="radio" aria-checked={hue === h} aria-label={`Farbe ${h}`} onClick={() => setHue(h)} className={cx("h-7 w-7 rounded-full border-2", hue === h ? "border-ink" : "border-transparent")} style={{ background: `hsl(${h} 70% 50%)` }} />)}
+          </div>
+        </div>
+        {msg && <p className={cx("text-[13px]", msg.bad ? "text-bad" : "text-good")}>{msg.text}</p>}
+        <Button type="submit" disabled={busy}>{busy ? "Wird gespeichert …" : "Event anlegen"}</Button>
+      </form>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="label">Alle Events</h2>
+        {events.length === 0 ? <p className="text-[13.5px] text-muted">Noch keine Events.</p> : events.map((ev) => (
+          <div key={ev.id} className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-3">
+            <MedalIcon hue={ev.hue} size={40} />
+            <div className="min-w-0 flex-1"><p className="truncate text-[14.5px] font-bold">{ev.name}</p><p className="text-[12px] text-muted">{fmtDay(ev.start)} bis {fmtDay(ev.end)} · {ev.required} Aktivität{ev.required > 1 ? "en" : ""} · Medaille „{ev.medal}“</p></div>
+            <button type="button" aria-label={`${ev.name} löschen`} onClick={() => setDel(ev.id)} className="grid h-9 w-9 place-items-center rounded-full text-muted hover:bg-raised"><Trash2 size={16} /></button>
+          </div>
+        ))}
+      </section>
+
+      <Sheet open={!!del} onClose={() => setDel(null)} title="Event löschen?"
+        footer={<div className="flex gap-2"><Button variant="secondary" block onClick={() => setDel(null)}>Abbrechen</Button>
+          <Button variant="danger" block onClick={async () => { const id = del!; setDel(null); try { await be.adminDeleteEvent(id); await api.reload(); } catch (x) { setMsg({ text: (x as Error).message, bad: true }); } }}>Löschen</Button></div>}>
+        <p className="pb-2 text-[14.5px]">Aktivitäten, die diesem Event zugeordnet sind, bleiben bestehen, zählen aber für keine Medaille mehr.</p>
       </Sheet>
     </div>
   );

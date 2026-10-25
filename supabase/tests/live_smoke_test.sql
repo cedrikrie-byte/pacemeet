@@ -81,5 +81,49 @@ begin
   end;
   execute 'reset role';
 
+  -- Stadtmittelpunkt wird gerundet gespeichert
+  perform set_config('request.jwt.claims', json_build_object('sub', a, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  update profiles set city = 'Münster', city_lat = 51.962510, city_lng = 7.625188 where id = a;
+  select count(*) into n from profiles where id = a and city_lat = 51.96 and city_lng = 7.63;
+  res := res || 'Stadt gerundet: ' || case when n = 1 then 'ok' else 'FEHLER' end || ' | ';
+  begin
+    update profiles set suspended_at = null where id = a;
+    res := res || 'Sperrstatus geschützt: FEHLER | ';
+  exception when others then
+    res := res || 'Sperrstatus geschützt: ok | ';
+  end;
+  begin
+    perform * from admin_reports('open');
+    res := res || 'Meldungen nur für Admins: FEHLER | ';
+  exception when others then
+    res := res || 'Meldungen nur für Admins: ok | ';
+  end;
+  execute 'reset role';
+
+  -- Moderation: A wird (nur im Test) Admin, B meldet nichts, A sperrt B
+  insert into admins (user_id) values (a);
+  perform set_config('request.jwt.claims', json_build_object('sub', b, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  insert into reports (reported_id, reason) values (a, 'Rauchtest-Meldung');
+  execute 'reset role';
+  perform set_config('request.jwt.claims', json_build_object('sub', a, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  select count(*) into n from admin_reports('open') r where r.reason = 'Rauchtest-Meldung';
+  res := res || 'Admin sieht Meldung: ' || case when n = 1 then 'ok' else 'FEHLER' end || ' | ';
+  perform admin_suspend(b, 'Rauchtest');
+  execute 'reset role';
+  perform set_config('request.jwt.claims', json_build_object('sub', b, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  begin
+    perform join_activity(act);
+    res := res || 'Gesperrte können nicht beitreten: FEHLER | ';
+  exception when others then
+    res := res || 'Gesperrte können nicht beitreten: ok | ';
+  end;
+  select count(*) into n from my_status() where suspended;
+  res := res || 'Sperre sichtbar für Betroffene: ' || case when n = 1 then 'ok' else 'FEHLER' end || ' | ';
+  execute 'reset role';
+
   raise exception 'RAUCHTEST (alles zurückgerollt): %', res;
 end $$;

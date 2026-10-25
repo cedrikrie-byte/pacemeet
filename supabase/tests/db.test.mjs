@@ -236,6 +236,15 @@ ok((await fails(U.D, "select join_activity($1)", [openAct])) === null, "Nach dem
 await as(U.A, "select admin_set_report_status(id, 'dismissed') from admin_reports('all')");
 ok((await as(U.A, "select count(*)::int c from admin_reports('open')")).rows[0].c === 0, "Meldungen können als erledigt markiert werden");
 
+// Events durch Admins
+ok((await fails(U.C, "insert into events (id, name, starts_on, ends_on, required, medal) values ('x1', 'Fake-Event', now(), now() + interval '3 days', 1, 'Fake')")) !== null, "Nur Admins können Events anlegen");
+await as(U.A, "insert into events (id, name, starts_on, ends_on, required, medal, description) values ('winter', 'Winterlauf-Woche', now(), now() + interval '7 days', 2, 'Winterläufer', 'Zwei gemeinsame Läufe')");
+ok((await as(U.C, "select name from events where id = 'winter'")).rows[0]?.name === "Winterlauf-Woche", "Admin-Event ist für alle sichtbar");
+ok((await fails(U.A, "insert into events (id, name, starts_on, ends_on, required, medal) values ('bad', 'Falsch', now(), now() - interval '1 day', 1, 'X1')")) !== null, "Event-Ende vor Beginn wird verweigert");
+ok((await fails(U.C, "delete from events where id = 'winter'")) === null && (await as(U.C, "select count(*)::int c from events where id = 'winter'")).rows[0].c === 1, "Nicht-Admins können Events nicht löschen");
+await as(U.A, "delete from events where id = 'winter'");
+ok((await as(U.C, "select count(*)::int c from events where id = 'winter'")).rows[0].c === 0, "Admin kann Event löschen");
+
 // Konto löschen
 await as(U.B, "select delete_my_account()");
 await db.exec("reset role");
