@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Minus, Plus } from "lucide-react";
+import { PaceInput } from "../components/PaceInput";
 import { useApp } from "../store/AppStore";
 import { useNav } from "../nav";
 import type { Activity, SeriesRule, SportId } from "../types";
@@ -85,7 +86,7 @@ export function CreateActivity({ editId, groupId: presetGroup }: { editId?: stri
     if (meet.label.trim().length < 3) err.meeting = "Gib einen öffentlichen Treffpunkt an.";
     else if (needsPublicConfirm(meet) && !meet.publicOk) err.meeting = "Das sieht nach einer Wohnadresse aus. Wähle einen öffentlichen Ort oder bestätige unten, dass er öffentlich ist.";
     if (!(distKm > 0 && distKm <= 300)) err.dist = "Gib eine Distanz zwischen 0,1 und 300 an.";
-    if (sport === "run" && !(tempo >= 150 && tempo <= 900)) err.tempo = "Pace im Format m:ss, zum Beispiel 7:30.";
+    if (sport === "run" && !(tempo >= 150 && tempo <= 900)) err.tempo = "Tippe die Pace als Ziffern, z. B. 730 für 7:30 (Sekunden bis 59).";
     if (sport === "ride" && !(tempo >= 8 && tempo <= 50)) err.tempo = "Tempo zwischen 8 und 50 km/h.";
     if (editing && max < editing.participants.length + 1) err.max = `Es sind schon ${editing.participants.length + 1} Personen dabei.`;
     if (repeat && !editing) {
@@ -173,7 +174,7 @@ export function CreateActivity({ editId, groupId: presetGroup }: { editId?: stri
           <div id="f-tempo">
             {sport === "run" ? (
               <Field label={`Pace (min/${units === "imperial" ? "mi" : "km"})`} htmlFor="pace" error={errors.tempo}>
-                <input id="pace" inputMode="numeric" className={cx(inputCls, "tnum")} value={pace} onChange={(e) => setPace(e.target.value)} placeholder="7:30" />
+                <PaceInput id="pace" value={pace} onChange={setPace} placeholder="7:30" />
               </Field>
             ) : (
               <Field label={`Ø Tempo (${units === "imperial" ? "mph" : "km/h"})`} htmlFor="speed" error={errors.tempo}>

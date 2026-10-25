@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowRight, Loader2, Mail, ShieldCheck, Users, Route as RouteIcon } from "lucide-react";
 import { LIVE } from "../config/backend";
 import { useNav } from "../nav";
+import { PaceInput } from "../components/PaceInput";
 import { useApp } from "../store/AppStore";
 import type { SportId } from "../types";
 import { Button, DemoTag, Field, SportIcon, inputCls, cx } from "../components/ui";
@@ -109,7 +110,7 @@ export function Onboarding() {
     if (LIVE && !consent) { setErr("Bitte stimme den Nutzungsbedingungen zu und bestätige, dass du mindestens 16 bist."); return; }
     const p = clockToSec(pace);
     if (name.trim().length < 2) { setStep(1); setErr("Bitte gib deinen Namen an."); return; }
-    if (sports.includes("run") && (!p || p < 150 || p > 900)) { setErr("Pace im Format m:ss, z. B. 6:30."); return; }
+    if (sports.includes("run") && (!p || p < 150 || p > 900)) { setErr("Tippe deine Pace als Ziffern, z. B. 630 für 6:30."); return; }
     if (!city) { setStep(1); setErr("Bitte wähle deine Stadt."); return; }
     api.onboard({ name: name.trim(), city: city.id, cityPos: city.pos, sports, pace: p ?? me.pace, speed: parseFloat(speed) || me.speed, bio: bio.trim() });
   }
@@ -143,7 +144,7 @@ export function Onboarding() {
             ))}
           </div>
           <div className="grid grid-cols-2 gap-3">
-            {sports.includes("run") && <Field label="Deine übliche Pace" htmlFor="o-pace" hint="min/km, grob reicht"><input id="o-pace" className={cx(inputCls, "tnum")} value={pace} onChange={(e) => setPace(e.target.value)} /></Field>}
+            {sports.includes("run") && <Field label="Deine übliche Pace" htmlFor="o-pace" hint="min/km, grob reicht"><PaceInput id="o-pace" value={pace} onChange={setPace} placeholder="6:30" /></Field>}
             {sports.includes("ride") && <Field label="Dein Rad-Tempo" htmlFor="o-speed" hint="km/h im Schnitt"><input id="o-speed" inputMode="decimal" className={cx(inputCls, "tnum")} value={speed} onChange={(e) => setSpeed(e.target.value)} /></Field>}
           </div>
           <Field label="Kurz über dich (optional)" htmlFor="o-bio"><textarea id="o-bio" rows={3} maxLength={200} className={cx(inputCls, "h-auto py-3")} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="z. B. Laufe nach Feierabend, suche Leute für den Wiedereinstieg." /></Field>

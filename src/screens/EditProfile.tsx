@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { Camera, Plus, Trash2 } from "lucide-react";
+import { PaceInput } from "../components/PaceInput";
 import { useApp } from "../store/AppStore";
 import { useNav } from "../nav";
 import type { Best, SportId } from "../types";
@@ -54,7 +55,7 @@ export function EditProfile() {
     e.preventDefault();
     const er: Record<string, string> = {};
     if (name.trim().length < 2) er.name = "Bitte gib einen Namen an.";
-    const p = clockToSec(pace); if (sports.includes("run") && (!p || p < 150 || p > 900)) er.pace = "Format m:ss, z. B. 6:30";
+    const p = clockToSec(pace); if (sports.includes("run") && (!p || p < 150 || p > 900)) er.pace = "Tippe z. B. 630 für 6:30 (Sekunden bis 59).";
     const a = age ? parseInt(age) : undefined; if (age && (!a || a < 16 || a > 99)) er.age = "Alter zwischen 16 und 99, oder leer lassen.";
     if (!sports.length) er.sports = "Wähle mindestens eine Sportart.";
     setErr(er); if (Object.keys(er).length) return;
@@ -93,7 +94,7 @@ export function EditProfile() {
           </div>
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          {sports.includes("run") && <Field label="Übliche Pace (min/km)" htmlFor="ppace" error={err.pace}><input id="ppace" className={cx(inputCls, "tnum")} value={pace} onChange={(e) => setPace(e.target.value)} /></Field>}
+          {sports.includes("run") && <Field label="Übliche Pace (min/km)" htmlFor="ppace" error={err.pace}><PaceInput id="ppace" value={pace} onChange={setPace} placeholder="6:30" /></Field>}
           {sports.includes("ride") && <Field label="Übliches Rad-Tempo (km/h)" htmlFor="pspeed"><input id="pspeed" inputMode="decimal" className={cx(inputCls, "tnum")} value={speed} onChange={(e) => setSpeed(e.target.value)} /></Field>}
         </div>
 
